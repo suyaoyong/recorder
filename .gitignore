@@ -1,0 +1,19 @@
+# Visual Studio / CMake build outputs
+.vs/
+out/
+build/
+
+# CMake intermediate files
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+*.dir/
+
+# User-specific / IDE files
+*.user
+*.VC.db
+*.opendb
+
+# Logs / captures
+*.log

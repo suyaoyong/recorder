@@ -1,0 +1,13 @@
+Deliverables for logging + HRESULT readability update (January 2, 2026)
+=====================================================================
+
+1. Updated source implementing console/file logging and structured error handling:
+   - src/Logger.h / src/Logger.cpp: thread-safe logger with optional file sink and timestamped console output.
+   - src/HResultUtils.h / src/HResultUtils.cpp: utilities to format HRESULT codes into friendly strings for logs/exceptions.
+   - src/LoopbackRecorder.* / src/main.cpp / src/DeviceEnumerator.*: integrated logger usage, graceful device handling, and human-readable HRESULT propagation.
+
+2. Documentation refresh (`README.md`): describes `--log-file`, logging behaviour, and extended stability notes.
+
+3. Build integration (`CMakeLists.txt`): adds new logger + HRESULT utilities to the target so they compile automatically.
+
+Use `--log-file <path>` to persist logs alongside the always-on console stream. All failures now surface precise HRESULT breakdowns both in the console/file logs and exception paths.
