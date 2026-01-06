@@ -7,6 +7,7 @@
 #include <stdexcept>
 #include <locale>
 #include <iostream>
+#include <utility>
 
 void Logger::EnableFileLogging(const std::filesystem::path& path) {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -23,6 +24,11 @@ void Logger::EnableFileLogging(const std::filesystem::path& path) {
     filePath_ = path;
 }
 
+void Logger::SetSink(std::function<void(LogLevel, const std::wstring&)> sink) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    sink_ = std::move(sink);
+}
+
 void Logger::Log(LogLevel level, const std::wstring& message) {
     const std::wstring line = Timestamp() + L" [" + LevelLabel(level) + L"] " + message;
     if (level == LogLevel::Error) {
@@ -30,9 +36,16 @@ void Logger::Log(LogLevel level, const std::wstring& message) {
     } else {
         std::wcout << line << std::endl;
     }
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (fileEnabled_ && file_) {
-        file_ << line << std::endl;
+    std::function<void(LogLevel, const std::wstring&)> sinkCopy;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (fileEnabled_ && file_) {
+            file_ << line << std::endl;
+        }
+        sinkCopy = sink_;
+    }
+    if (sinkCopy) {
+        sinkCopy(level, line);
     }
 }
 

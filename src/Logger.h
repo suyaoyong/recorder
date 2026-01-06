@@ -2,6 +2,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <mutex>
 #include <string>
 
@@ -16,6 +17,7 @@ public:
     Logger() = default;
 
     void EnableFileLogging(const std::filesystem::path& path);
+    void SetSink(std::function<void(LogLevel, const std::wstring&)> sink);
 
     void Log(LogLevel level, const std::wstring& message);
     void Info(const std::wstring& message) { Log(LogLevel::Info, message); }
@@ -30,4 +32,5 @@ private:
     bool fileEnabled_ = false;
     std::filesystem::path filePath_;
     mutable std::mutex mutex_;
+    std::function<void(LogLevel, const std::wstring&)> sink_;
 };

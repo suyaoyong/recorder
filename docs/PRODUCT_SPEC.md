@@ -14,6 +14,8 @@
    - `--seconds N` to cap duration; Enter key stops early.
    - `--out <path>` to select WAV destination; auto-create directories.
    - Placeholder switch to enable mic mixing in future (default off).
+   - Console hotkeys for pause/resume (e.g., `p` toggles, `pause`/`resume` explicit) while keeping capture active.
+   - Rolling output support via `--segment-seconds`, `--segment-bytes`, and manual `n` commands that finalize the current WAV and continue in a new numbered file.
 4. **Output format**
    - Write PCM WAV (16-bit or 32-bit float) using the system mix format from `IAudioClient::GetMixFormat`.
    - Ensure WAV header/data chunk sizes are finalized correctly.

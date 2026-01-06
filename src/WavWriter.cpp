@@ -2,6 +2,7 @@
 
 #include <stdexcept>
 #include <cstring>
+#include <system_error>
 
 namespace {
 void WriteValue(std::ofstream& stream, uint32_t value) {
@@ -11,6 +12,8 @@ void WriteValue(std::ofstream& stream, uint32_t value) {
 
 WavWriter::WavWriter(const std::filesystem::path& path, const WAVEFORMATEX& format)
     : path_(path) {
+    std::error_code removeEc;
+    std::filesystem::remove(path_, removeEc);
     stream_.open(path, std::ios::binary | std::ios::trunc);
     if (!stream_) {
         throw std::runtime_error("Failed to open output file");

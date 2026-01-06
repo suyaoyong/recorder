@@ -3,10 +3,28 @@
 #include <iomanip>
 #include <sstream>
 #include <cstdint>
+#include <vector>
+#include <stdexcept>
 
 namespace {
 std::string NarrowFromWide(const std::wstring& input) {
-    return std::string(input.begin(), input.end());
+    if (input.empty()) {
+        return {};
+    }
+    int sizeNeeded = WideCharToMultiByte(CP_UTF8, 0, input.c_str(),
+                                         static_cast<int>(input.size()),
+                                         nullptr, 0, nullptr, nullptr);
+    if (sizeNeeded <= 0) {
+        throw std::runtime_error("WideCharToMultiByte failed");
+    }
+    std::string result(sizeNeeded, '\0');
+    int converted = WideCharToMultiByte(CP_UTF8, 0, input.c_str(),
+                                        static_cast<int>(input.size()),
+                                        result.data(), sizeNeeded, nullptr, nullptr);
+    if (converted != sizeNeeded) {
+        throw std::runtime_error("WideCharToMultiByte wrote unexpected length");
+    }
+    return result;
 }
 }
 

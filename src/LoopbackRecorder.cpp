@@ -4,6 +4,8 @@
 #include "LoopbackRecorder.h"
 #include "SpscByteRing.h"
 #include "HResultUtils.h"
+#include "SegmentNaming.h"
+#include "Mp3Converter.h"
 
 #include <Audioclient.h>
 #include <avrt.h>
@@ -18,6 +20,10 @@
 #include <thread>
 #include <cstring>
 #include <string>
+#include <sstream>
+#include <iomanip>
+#include <filesystem>
+#include <cwctype>
 
 using Microsoft::WRL::ComPtr;
 
@@ -102,12 +108,24 @@ bool IsSupportedFormat(const WAVEFORMATEX* format) {
     return false;
 }
 
+std::wstring ToLower(std::wstring value) {
+    for (auto& ch : value) {
+        ch = static_cast<wchar_t>(towlower(ch));
+    }
+    return value;
+}
+
+bool IsMp3Path(const std::filesystem::path& path) {
+    auto ext = ToLower(path.extension().wstring());
+    return ext == L".mp3";
+}
+
 }
 
 LoopbackRecorder::LoopbackRecorder(ComPtr<IMMDevice> renderDevice, Logger& logger)
     : device_(std::move(renderDevice)), logger_(logger) {}
 
-RecorderStats LoopbackRecorder::Record(const RecorderConfig& config, const std::function<bool()>& shouldStop) {
+RecorderStats LoopbackRecorder::Record(const RecorderConfig& config, const RecorderControls& controls) {
     RecorderStats stats;
     if (!device_) {
         throw std::runtime_error("Render device is null");
@@ -134,8 +152,9 @@ RecorderStats LoopbackRecorder::Record(const RecorderConfig& config, const std::
 
     RecorderConfig localConfig = config;
     const std::wstring outputPathText = localConfig.outputPath.wstring();
-    logger_.Info(L"Recording system audio to " + outputPathText);
-    WavWriter writer(localConfig.outputPath, *mixFormat);
+    const std::wstring outputExt = localConfig.outputPath.extension().wstring();
+    const std::wstring segmentSuffix = outputExt.empty() ? L"" : outputExt;
+    logger_.Info(L"Recording base path: " + outputPathText + L" (files use _001" + segmentSuffix + L" numbering).");
 
     const auto latency = std::clamp(localConfig.latencyHint, std::chrono::milliseconds(10), std::chrono::milliseconds(500));
     const REFERENCE_TIME bufferDuration = static_cast<REFERENCE_TIME>(latency.count()) * 10000; // 100ns units
@@ -178,7 +197,7 @@ RecorderStats LoopbackRecorder::Record(const RecorderConfig& config, const std::
         throw std::runtime_error("Failed to create writer synchronization events");
     }
     HandleGuard userStopEvent;
-    const bool hasStopCallback = static_cast<bool>(shouldStop);
+    const bool hasStopCallback = static_cast<bool>(controls.shouldStop);
     if (hasStopCallback) {
         userStopEvent.reset(CreateEventW(nullptr, TRUE, FALSE, nullptr));
         if (!userStopEvent.get()) {
@@ -200,6 +219,12 @@ RecorderStats LoopbackRecorder::Record(const RecorderConfig& config, const std::
     const std::optional<uint64_t> frameLimit = localConfig.maxDuration
         ? std::optional<uint64_t>(static_cast<uint64_t>(sampleRate) * localConfig.maxDuration->count())
         : std::nullopt;
+    const std::optional<uint64_t> segmentFrameTarget = localConfig.segmentDuration
+        ? std::optional<uint64_t>(static_cast<uint64_t>(sampleRate) * localConfig.segmentDuration->count())
+        : std::nullopt;
+    const std::optional<uint64_t> segmentByteTarget = localConfig.segmentBytes;
+    const bool manualSegmentsEnabled = static_cast<bool>(controls.requestNewSegment);
+    const bool segmentationEnabled = segmentFrameTarget.has_value() || segmentByteTarget.has_value() || manualSegmentsEnabled;
 
     const auto ringMs = std::clamp(localConfig.ringBufferSize, std::chrono::milliseconds(200), std::chrono::milliseconds(10000));
     const uint64_t ringFrames = std::max<uint64_t>(static_cast<uint64_t>(sampleRate) * ringMs.count() / 1000, 1);
@@ -213,6 +238,7 @@ RecorderStats LoopbackRecorder::Record(const RecorderConfig& config, const std::
     std::atomic<bool> writerFailed{false};
     std::string writerErrorMessage;
     std::atomic<bool> fatalError{false};
+    std::atomic<uint32_t> segmentsOpened{1};
     std::atomic<bool> stopWatcherTerminate{false};
     std::thread stopWatcher;
     if (hasStopCallback) {
@@ -224,7 +250,7 @@ RecorderStats LoopbackRecorder::Record(const RecorderConfig& config, const std::
                     }
                     break;
                 }
-                if (shouldStop() || stopWatcherTerminate.load(std::memory_order_relaxed)) {
+                if ((controls.shouldStop && controls.shouldStop()) || stopWatcherTerminate.load(std::memory_order_relaxed)) {
                     if (userStopEvent.get()) {
                         SetEvent(userStopEvent.get());
                     }
@@ -235,14 +261,106 @@ RecorderStats LoopbackRecorder::Record(const RecorderConfig& config, const std::
         });
     }
 
-    std::thread writerThread([&]() {
+    const bool mp3Output = IsMp3Path(localConfig.outputPath);
+    std::thread writerThread([&, manualSegmentCallback = controls.requestNewSegment, segmentationEnabled, mp3Output]() mutable {
         const size_t chunkBytes = std::min<size_t>(ring.Capacity(), std::max<size_t>(bytesPerFrame * 512, 16384));
         std::vector<BYTE> chunk(chunkBytes);
         const DWORD writerWaitMs = static_cast<DWORD>(std::clamp<int>(static_cast<int>(localConfig.watchdogTimeout.count() / 2), 5, 500));
         size_t bytesPendingFlush = 0;
         const size_t flushThreshold = static_cast<size_t>(bytesPerFrame) * sampleRate; // roughly one second
+        size_t currentSegmentIndex = 0;
+        uint64_t framesInSegment = 0;
+        uint64_t bytesInSegment = 0;
+        Mp3ConversionOptions mp3Options;
+        if (localConfig.mp3BitrateKbps) {
+            mp3Options.bitrateKbps = *localConfig.mp3BitrateKbps;
+        }
+
+        auto consumeManualSegment = [&]() -> bool {
+            if (!manualSegmentCallback) {
+                return false;
+            }
+            return manualSegmentCallback();
+        };
+
         try {
+            class IAudioWriter {
+            public:
+                virtual ~IAudioWriter() = default;
+                virtual void Write(const BYTE* data, size_t byteCount) = 0;
+                virtual void Flush() = 0;
+                virtual void Close() = 0;
+            };
+            class WavWriterAdapter final : public IAudioWriter {
+            public:
+                explicit WavWriterAdapter(const std::filesystem::path& path, const WAVEFORMATEX& format)
+                    : writer_(path, format) {}
+                void Write(const BYTE* data, size_t byteCount) override { writer_.Write(data, byteCount); }
+                void Flush() override { writer_.Flush(); }
+                void Close() override { writer_.Close(); }
+            private:
+                WavWriter writer_;
+            };
+            class Mp3WriterAdapter final : public IAudioWriter {
+            public:
+                Mp3WriterAdapter(const std::filesystem::path& path,
+                                 const WAVEFORMATEX& format,
+                                 const Mp3ConversionOptions& options,
+                                 Logger& logger)
+                    : writer_(path, format, options, logger) {}
+                void Write(const BYTE* data, size_t byteCount) override { writer_.Write(data, byteCount); }
+                void Flush() override { writer_.Flush(); }
+                void Close() override { writer_.Close(); }
+            private:
+                Mp3StreamWriter writer_;
+            };
+
+            auto openWriterForSegment = [&](size_t segmentIndex) -> std::unique_ptr<IAudioWriter> {
+                const auto segmentPath = BuildSegmentPath(localConfig.outputPath, segmentIndex);
+                if (segmentIndex == 0) {
+                    logger_.Info(L"Opening initial segment: " + segmentPath.wstring());
+                } else {
+                    logger_.Info(L"Rolling to segment #" + std::to_wstring(segmentIndex + 1) + L": " + segmentPath.wstring());
+                }
+                if (mp3Output) {
+                    return std::make_unique<Mp3WriterAdapter>(segmentPath, *mixFormat, mp3Options, logger_);
+                }
+                return std::make_unique<WavWriterAdapter>(segmentPath, *mixFormat);
+            };
+
+            std::unique_ptr<IAudioWriter> segmentWriter = openWriterForSegment(currentSegmentIndex);
+            segmentsOpened.store(1, std::memory_order_release);
+            auto rollSegment = [&](const wchar_t* reason) {
+                if (!segmentationEnabled) {
+                    return;
+                }
+                if (segmentWriter) {
+                    if (bytesPendingFlush > 0) {
+                        segmentWriter->Flush();
+                        bytesPendingFlush = 0;
+                    }
+                    segmentWriter->Close();
+                }
+                ++currentSegmentIndex;
+                const auto nextPath = BuildSegmentPath(localConfig.outputPath, currentSegmentIndex);
+                std::wstring reasonText = reason ? std::wstring(reason) : std::wstring(L"rolling");
+                logger_.Info(L"Starting segment #" + std::to_wstring(currentSegmentIndex + 1) +
+                             L" (" + reasonText + L"): " + nextPath.wstring());
+                if (mp3Output) {
+                    segmentWriter = std::make_unique<Mp3WriterAdapter>(nextPath, *mixFormat, mp3Options, logger_);
+                } else {
+                    segmentWriter = std::make_unique<WavWriterAdapter>(nextPath, *mixFormat);
+                }
+                framesInSegment = 0;
+                bytesInSegment = 0;
+                bytesPendingFlush = 0;
+                segmentsOpened.store(static_cast<uint32_t>(currentSegmentIndex + 1), std::memory_order_release);
+            };
+
             while (writerActive.load(std::memory_order_acquire) || ring.AvailableToRead() > 0) {
+                if (consumeManualSegment()) {
+                    rollSegment(L"manual command");
+                }
                 size_t bytes = ring.Read(chunk.data(), chunk.size());
                 if (bytes == 0) {
                     DWORD waitRes = WaitForSingleObject(dataReadyEvent.get(), writerWaitMs);
@@ -255,16 +373,32 @@ RecorderStats LoopbackRecorder::Record(const RecorderConfig& config, const std::
                     }
                     continue;
                 }
-                writer.Write(chunk.data(), bytes);
+                segmentWriter->Write(chunk.data(), bytes);
                 bytesPendingFlush += bytes;
+                bytesInSegment += bytes;
+                framesInSegment += bytes / bytesPerFrame;
                 if (bytesPendingFlush >= flushThreshold) {
-                    writer.Flush();
+                    segmentWriter->Flush();
                     bytesPendingFlush = 0;
                 }
                 SetEvent(spaceAvailableEvent.get());
+
+                bool rotate = false;
+                const wchar_t* reason = nullptr;
+                if (segmentFrameTarget && framesInSegment >= *segmentFrameTarget) {
+                    rotate = true;
+                    reason = L"segment duration";
+                }
+                if (!rotate && segmentByteTarget && bytesInSegment >= *segmentByteTarget) {
+                    rotate = true;
+                    reason = L"segment size";
+                }
+                if (rotate) {
+                    rollSegment(reason);
+                }
             }
-            if (bytesPendingFlush > 0) {
-                writer.Flush();
+            if (bytesPendingFlush > 0 && segmentWriter) {
+                segmentWriter->Flush();
             }
         } catch (const std::exception& ex) {
             writerFailed.store(true, std::memory_order_release);
@@ -279,6 +413,26 @@ RecorderStats LoopbackRecorder::Record(const RecorderConfig& config, const std::
     });
 
     ThreadGuard writerGuard(writerThread, writerActive, dataReadyEvent.get());
+
+    const auto pauseCallback = controls.isPaused;
+    bool lastPauseState = false;
+    if (pauseCallback) {
+        lastPauseState = pauseCallback();
+        if (lastPauseState) {
+            logger_.Info(L"Recording is paused at start; audio data will be skipped until resume.");
+        }
+    }
+    auto queryPauseState = [&]() -> bool {
+        if (!pauseCallback) {
+            return false;
+        }
+        bool paused = pauseCallback();
+        if (paused != lastPauseState) {
+            lastPauseState = paused;
+            logger_.Info(paused ? L"Recording paused." : L"Recording resumed.");
+        }
+        return paused;
+    };
 
     uint64_t framesRecorded = 0;
     uint64_t framesPerSecond = 0;
@@ -303,7 +457,11 @@ RecorderStats LoopbackRecorder::Record(const RecorderConfig& config, const std::
         uint64_t queueMs = framesInRing > 0 ? (framesInRing * 1000ull) / sampleRate : 0;
         uint64_t droppedSince = stats.framesDropped - lastReportedDropped;
         std::wstring message = L"[Status] fps=" + std::to_wstring(framesPerSecond) +
-            L"/s, queue=" + std::to_wstring(queueMs) + L" ms, dropped=" + std::to_wstring(droppedSince);
+            L"/s, queue=" + std::to_wstring(queueMs) + L" ms, dropped=" + std::to_wstring(droppedSince) +
+            L", segments=" + std::to_wstring(segmentsOpened.load(std::memory_order_acquire));
+        if (lastPauseState) {
+            message += L" (paused)";
+        }
         logger_.Info(message);
         framesPerSecond = 0;
         lastReportedDropped = stats.framesDropped;
@@ -361,7 +519,7 @@ RecorderStats LoopbackRecorder::Record(const RecorderConfig& config, const std::
             logger_.Error(L"Writer thread reported a fatal error; aborting capture.");
             break;
         }
-        if (shouldStop && shouldStop()) {
+        if (controls.shouldStop && controls.shouldStop()) {
             if (userStopEvent.get()) {
                 SetEvent(userStopEvent.get());
             }
@@ -420,6 +578,18 @@ RecorderStats LoopbackRecorder::Record(const RecorderConfig& config, const std::
                 }
                 logger_.Warn(L"Data discontinuity reported by audio engine.");
             }
+            const bool pausedNow = queryPauseState();
+            if (pausedNow) {
+                stats.framesWhilePaused += frames;
+                captureClient->ReleaseBuffer(frames);
+                hr = captureClient->GetNextPacketSize(&packetLength);
+                if (FAILED(hr)) {
+                    handleAudioError(hr, L"GetNextPacketSize");
+                    done = true;
+                    break;
+                }
+                continue;
+            }
             staging.resize(bytesToWrite);
             if (flags & AUDCLNT_BUFFERFLAGS_SILENT) {
                 std::fill(staging.begin(), staging.end(), 0);
@@ -473,10 +643,13 @@ RecorderStats LoopbackRecorder::Record(const RecorderConfig& config, const std::
     audioClient->Stop();
     logger_.Info(L"WASAPI loopback capture stopped.");
     stats.framesCaptured = framesRecorded;
+    stats.segmentsWritten = segmentsOpened.load(std::memory_order_acquire);
     logger_.Info(L"Frames captured: " + std::to_wstring(stats.framesCaptured) +
                  L", silent frames: " + std::to_wstring(stats.silentFrames) +
+                 L", paused frames: " + std::to_wstring(stats.framesWhilePaused) +
                  L", glitches: " + std::to_wstring(stats.glitchCount) +
-                 L", dropped: " + std::to_wstring(stats.framesDropped));
+                 L", dropped: " + std::to_wstring(stats.framesDropped) +
+                 L", segments: " + std::to_wstring(stats.segmentsWritten));
     if (stats.framesCaptured > 0 && stats.framesCaptured == stats.silentFrames) {
         logger_.Warn(L"All captured frames were reported as silence. Verify the selected playback device is actively outputting audio (try --list-devices / --device-index).");
     }

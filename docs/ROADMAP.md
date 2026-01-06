@@ -11,9 +11,9 @@
 - Remember last-used device per user profile.
 
 ## Phase 2: Control Enhancements
-- Add pause/resume commands (state machine + console hotkeys).
-- Rolling file output by duration or size with graceful WAV finalization.
-- Safe-stop hooks (flush buffers, checksum manifest).
+- [x] Add pause/resume commands (console `P` hotkey + recorder state machine).
+- [x] Rolling file output by duration/size with graceful WAV finalization and `_001.wav` style numbering.
+- [ ] Safe-stop hooks (flush buffers, checksum manifest) and richer segment metadata exports.
 
 ## Phase 3: Encoding & Audio Processing
 - Optional microphone mixing with latency alignment.

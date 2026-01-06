@@ -22,6 +22,9 @@ struct RecorderConfig {
     bool failOnGlitch = false;
     std::chrono::milliseconds ringBufferSize{2000};
     bool quietStatusUpdates = false;
+    std::optional<std::chrono::seconds> segmentDuration;
+    std::optional<uint64_t> segmentBytes;
+    std::optional<uint32_t> mp3BitrateKbps;
 };
 
 struct RecorderStats {
@@ -34,12 +37,20 @@ struct RecorderStats {
     uint32_t writerWaitTimeouts = 0;
     uint64_t framesDropped = 0;
     bool deviceInvalidated = false;
+    uint64_t framesWhilePaused = 0;
+    uint32_t segmentsWritten = 1;
+};
+
+struct RecorderControls {
+    std::function<bool()> shouldStop;
+    std::function<bool()> isPaused;
+    std::function<bool()> requestNewSegment;
 };
 
 class LoopbackRecorder {
 public:
     LoopbackRecorder(Microsoft::WRL::ComPtr<IMMDevice> renderDevice, Logger& logger);
-    RecorderStats Record(const RecorderConfig& config, const std::function<bool()>& shouldStop);
+    RecorderStats Record(const RecorderConfig& config, const RecorderControls& controls = {});
 private:
     void ValidateFormat(const WAVEFORMATEX* format);
     void MixMicrophoneIfEnabled(BYTE* buffer, UINT32 frames, const WAVEFORMATEX* format);

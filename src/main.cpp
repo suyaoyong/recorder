@@ -2,11 +2,14 @@
 #include "LoopbackRecorder.h"
 #include "Logger.h"
 #include "HResultUtils.h"
+#include "RecordingUtils.h"
 
 #include <windows.h>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cwctype>
 #include <filesystem>
 #include <iomanip>
 #include <iostream>
@@ -23,6 +26,23 @@ std::wstring ToWide(const std::string& text) {
     return std::wstring(text.begin(), text.end());
 }
 
+std::wstring Trim(const std::wstring& text) {
+    const size_t first = text.find_first_not_of(L" \t\r\n");
+    if (first == std::wstring::npos) {
+        return L"";
+    }
+    const size_t last = text.find_last_not_of(L" \t\r\n");
+    return text.substr(first, last - first + 1);
+}
+
+std::wstring ToLower(const std::wstring& text) {
+    std::wstring result = text;
+    std::transform(result.begin(), result.end(), result.begin(), [](wchar_t ch) {
+        return static_cast<wchar_t>(std::towlower(ch));
+    });
+    return result;
+}
+
 struct CommandLineOptions {
     bool listDevices = false;
     std::optional<size_t> deviceIndex;
@@ -36,15 +56,25 @@ struct CommandLineOptions {
     std::optional<int> bufferMs;
     std::optional<std::filesystem::path> logFile;
     bool quiet = false;
+    std::optional<int> segmentSeconds;
+    std::optional<uint64_t> segmentBytes;
+    bool convertToMp3 = false;
+    std::optional<int> mp3BitrateKbps;
 };
 
 void PrintUsage() {
     std::wcout << L"Loopback Recorder\n"
                << L"Usage: loopback_recorder [--list-devices] [--device-index N] [--seconds N] [--out path]\n"
                << L"                        [--latency-ms N] [--watchdog-ms N] [--buffer-ms N]\n"
+               << L"                        [--segment-seconds N] [--segment-bytes N]\n"
+               << L"                        [--mp3] [--mp3-bitrate K]\n"
                << L"                        [--fail-on-glitch] [--mix-mic] [--log-file path] [--quiet]\n"
+               << L"Notes:\n"
+               << L"  - Output format is inferred from --out extension (.mp3 or .wav). Default is MP3.\n"
+               << L"  - --mp3 is a legacy flag that forces .mp3 if no extension is provided.\n"
                << L"Examples:\n"
-               << L"  loopback_recorder --seconds 30 --out demo.wav\n"
+               << L"  loopback_recorder --seconds 30 --out demo.mp3\n"
+               << L"  loopback_recorder --segment-seconds 300 --out session.wav\n"
                << L"  loopback_recorder --device-index 1\n";
 }
 
@@ -56,6 +86,20 @@ bool ParseInt(const std::wstring& text, int& value) {
             return false;
         }
         value = parsed;
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+
+bool ParseUint64(const std::wstring& text, uint64_t& value) {
+    try {
+        size_t idx = 0;
+        unsigned long long parsed = std::stoull(text, &idx);
+        if (idx != text.size()) {
+            return false;
+        }
+        value = static_cast<uint64_t>(parsed);
         return true;
     } catch (...) {
         return false;
@@ -124,6 +168,24 @@ CommandLineOptions ParseArgs(int argc, wchar_t** argv) {
                 throw std::runtime_error("--buffer-ms must be >= 200 ms");
             }
             opts.bufferMs = value;
+        } else if (arg == L"--segment-seconds") {
+            if (i + 1 >= argc) {
+                throw std::runtime_error("--segment-seconds requires a value");
+            }
+            int value = 0;
+            if (!ParseInt(argv[++i], value) || value <= 0) {
+                throw std::runtime_error("--segment-seconds must be a positive integer");
+            }
+            opts.segmentSeconds = value;
+        } else if (arg == L"--segment-bytes") {
+            if (i + 1 >= argc) {
+                throw std::runtime_error("--segment-bytes requires a value");
+            }
+            uint64_t value = 0;
+            if (!ParseUint64(argv[++i], value) || value == 0) {
+                throw std::runtime_error("--segment-bytes must be a positive integer");
+            }
+            opts.segmentBytes = value;
         } else if (arg == L"--log-file") {
             if (i + 1 >= argc) {
                 throw std::runtime_error("--log-file requires a path");
@@ -131,21 +193,22 @@ CommandLineOptions ParseArgs(int argc, wchar_t** argv) {
             opts.logFile = std::filesystem::path(argv[++i]);
         } else if (arg == L"--quiet") {
             opts.quiet = true;
+        } else if (arg == L"--mp3") {
+            opts.convertToMp3 = true;
+        } else if (arg == L"--mp3-bitrate") {
+            if (i + 1 >= argc) {
+                throw std::runtime_error("--mp3-bitrate requires a value");
+            }
+            int value = 0;
+            if (!ParseInt(argv[++i], value) || value < 32 || value > 320) {
+                throw std::runtime_error("--mp3-bitrate must be between 32 and 320 kbps");
+            }
+            opts.mp3BitrateKbps = value;
         } else {
             throw std::runtime_error("Unknown argument: " + std::string(arg.begin(), arg.end()));
         }
     }
     return opts;
-}
-
-std::filesystem::path DefaultOutputPath() {
-    auto now = std::chrono::system_clock::now();
-    auto now_t = std::chrono::system_clock::to_time_t(now);
-    std::tm tm{};
-    localtime_s(&tm, &now_t);
-    wchar_t buffer[64];
-    wcsftime(buffer, std::size(buffer), L"loopback_%Y%m%d_%H%M%S.wav", &tm);
-    return buffer;
 }
 
 class ComGuard {
@@ -208,6 +271,17 @@ int wmain(int argc, wchar_t** argv) {
 
         RecorderConfig config;
         config.outputPath = options.outputPath.value_or(DefaultOutputPath());
+        if (options.convertToMp3) {
+            config.outputPath = EnsureExtension(config.outputPath, L".mp3");
+        } else if (config.outputPath.extension().empty()) {
+            config.outputPath = EnsureExtension(config.outputPath, L".mp3");
+        }
+        if (options.mp3BitrateKbps) {
+            config.mp3BitrateKbps = static_cast<uint32_t>(*options.mp3BitrateKbps);
+        }
+        if (options.mp3BitrateKbps && ToLower(config.outputPath.extension().wstring()) != L".mp3") {
+            logger.Warn(L"--mp3-bitrate is ignored when output is not MP3.");
+        }
         config.enableMicMix = options.mixMic; // currently placeholder
         if (options.seconds) {
             config.maxDuration = std::chrono::seconds(*options.seconds);
@@ -223,42 +297,87 @@ int wmain(int argc, wchar_t** argv) {
             config.ringBufferSize = std::chrono::milliseconds(*options.bufferMs);
         }
         config.quietStatusUpdates = options.quiet;
-        if (config.outputPath.has_parent_path() && !config.outputPath.parent_path().empty()) {
-            std::filesystem::create_directories(config.outputPath.parent_path());
+        if (options.segmentSeconds) {
+            config.segmentDuration = std::chrono::seconds(*options.segmentSeconds);
         }
+        if (options.segmentBytes) {
+            config.segmentBytes = options.segmentBytes;
+        }
+        auto ensureParentDirectory = [](const std::filesystem::path& path) {
+            if (path.has_parent_path() && !path.parent_path().empty()) {
+                std::filesystem::create_directories(path.parent_path());
+            }
+        };
+        ensureParentDirectory(config.outputPath);
 
         logger.Info(L"Output file: " + config.outputPath.wstring());
 
         LoopbackRecorder recorder(device, logger);
         std::atomic<bool> stopRequested = false;
+        std::atomic<bool> pauseRequested = false;
+        std::atomic<bool> segmentRequested = false;
 
         std::wcout << L"Recording system audio to " << config.outputPath.wstring() << std::endl;
         if (config.maxDuration) {
             std::wcout << L"Target duration: " << config.maxDuration->count() << L" seconds" << std::endl;
         }
-        std::wcout << L"Press ENTER to stop early..." << std::endl;
+        std::wcout << L"Press ENTER to stop." << std::endl;
+        std::wcout << L"Type 'P' + ENTER to toggle pause/resume, 'S' + ENTER to roll to a new file." << std::endl;
 
-        std::thread stopper([&stopRequested]() {
-            std::wstring line;
-            std::getline(std::wcin, line);
-            stopRequested = true;
+        std::thread commandThread([&]() {
+            while (true) {
+                std::wstring line;
+                if (!std::getline(std::wcin, line)) {
+                    stopRequested = true;
+                    break;
+                }
+                std::wstring command = ToLower(Trim(line));
+                if (command.empty()) {
+                    stopRequested = true;
+                    break;
+                }
+                if (command == L"p") {
+                    bool newState = !pauseRequested.load();
+                    pauseRequested.store(newState);
+                    std::wcout << (newState ? L"[Command] Paused." : L"[Command] Resumed.") << std::endl;
+                    continue;
+                }
+                if (command == L"s") {
+                    segmentRequested.store(true);
+                    std::wcout << L"[Command] Segment rotation requested." << std::endl;
+                    continue;
+                }
+                std::wcout << L"Unknown command. ENTER=Stop, P=Pause/Resume, S=New segment." << std::endl;
+            }
         });
-        stopper.detach();
+        commandThread.detach();
 
-        RecorderStats stats = recorder.Record(config, [&stopRequested]() {
+        RecorderControls controls;
+        controls.shouldStop = [&stopRequested]() {
             return stopRequested.load();
-        });
+        };
+        controls.isPaused = [&pauseRequested]() {
+            return pauseRequested.load();
+        };
+        controls.requestNewSegment = [&segmentRequested]() -> bool {
+            bool expected = true;
+            return segmentRequested.compare_exchange_strong(expected, false);
+        };
+
+        RecorderStats stats = recorder.Record(config, controls);
 
         stopRequested = true;
         std::wcout << L"Recording finished." << std::endl;
         std::wcout << L"Captured frames: " << stats.framesCaptured
                    << L", silent frames: " << stats.silentFrames
+                   << L", paused frames: " << stats.framesWhilePaused
                    << L", glitches: " << stats.glitchCount
                    << L", capture timeouts: " << stats.watchdogTimeouts
                    << L", ring waits: " << stats.ringBufferWaits
                    << L", ring timeouts: " << stats.ringBufferTimeouts
                    << L", writer waits: " << stats.writerWaitTimeouts
-                   << L", dropped frames: " << stats.framesDropped << std::endl;
+                   << L", dropped frames: " << stats.framesDropped
+                   << L", segments: " << stats.segmentsWritten << std::endl;
         if (stats.deviceInvalidated) {
             std::wcout << L"Recording stopped because the playback device changed or disconnected. Re-run after selecting an active device." << std::endl;
         }
