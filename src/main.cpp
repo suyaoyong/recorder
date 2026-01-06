@@ -309,6 +309,7 @@ int wmain(int argc, wchar_t** argv) {
             }
         };
         ensureParentDirectory(config.outputPath);
+        config.outputPath = EnsureUniquePath(config.outputPath);
 
         logger.Info(L"Output file: " + config.outputPath.wstring());
 

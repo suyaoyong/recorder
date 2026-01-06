@@ -42,6 +42,32 @@ std::filesystem::path EnsureExtension(std::filesystem::path path, const std::wst
     return path;
 }
 
+std::filesystem::path EnsureUniquePath(const std::filesystem::path& path) {
+    if (path.empty()) {
+        return path;
+    }
+    if (!std::filesystem::exists(path)) {
+        return path;
+    }
+
+    const auto directory = path.parent_path();
+    const std::wstring stem = path.stem().wstring();
+    const std::wstring extension = path.extension().wstring();
+
+    for (int i = 1; i <= 9999; ++i) {
+        std::wstringstream builder;
+        builder << stem << L"_" << std::setw(3) << std::setfill(L'0') << i;
+        std::filesystem::path candidate = directory / builder.str();
+        if (!extension.empty()) {
+            candidate += extension;
+        }
+        if (!std::filesystem::exists(candidate)) {
+            return candidate;
+        }
+    }
+    return path;
+}
+
 void ConvertRecordedSegmentsToMp3(const std::filesystem::path& wavBasePath,
                                   const std::filesystem::path& mp3BasePath,
                                   uint32_t segmentCount,

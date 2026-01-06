@@ -192,6 +192,7 @@ void StartRecording(AppState* state) {
     outputPath = mp3Enabled
         ? EnsureExtension(outputPath, L".mp3")
         : EnsureExtension(outputPath, L".wav");
+    outputPath = EnsureUniquePath(outputPath);
     SetWindowTextW(state->outputEdit, outputPath.wstring().c_str());
 
     state->stopRequested.store(false);
