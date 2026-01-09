@@ -257,18 +257,6 @@ int wmain(int argc, wchar_t** argv) {
             return 0;
         }
 
-        Microsoft::WRL::ComPtr<IMMDevice> device;
-        if (options.deviceIndex) {
-            device = enumerator.GetDeviceByIndex(*options.deviceIndex);
-        } else {
-            device = enumerator.GetDefaultRenderDevice();
-        }
-        if (!device) {
-            throw std::runtime_error("Unable to acquire playback device");
-        }
-        std::wstring friendlyName = DeviceEnumerator::GetFriendlyName(device.Get());
-        logger.Info(L"Selected playback device: " + friendlyName);
-
         RecorderConfig config;
         config.outputPath = options.outputPath.value_or(DefaultOutputPath());
         if (options.convertToMp3) {
@@ -303,22 +291,15 @@ int wmain(int argc, wchar_t** argv) {
         if (options.segmentBytes) {
             config.segmentBytes = options.segmentBytes;
         }
-        auto ensureParentDirectory = [](const std::filesystem::path& path) {
-            if (path.has_parent_path() && !path.parent_path().empty()) {
-                std::filesystem::create_directories(path.parent_path());
-            }
-        };
-        ensureParentDirectory(config.outputPath);
-        config.outputPath = EnsureUniquePath(config.outputPath);
-
-        logger.Info(L"Output file: " + config.outputPath.wstring());
-
-        LoopbackRecorder recorder(device, logger);
         std::atomic<bool> stopRequested = false;
         std::atomic<bool> pauseRequested = false;
         std::atomic<bool> segmentRequested = false;
 
-        std::wcout << L"Recording system audio to " << config.outputPath.wstring() << std::endl;
+        const std::filesystem::path baseOutputPath = config.outputPath;
+        constexpr int kMaxReconnectAttempts = 3;
+        constexpr int kReconnectDelayMs = 1500;
+        int reconnectAttempts = 0;
+
         if (config.maxDuration) {
             std::wcout << L"Target duration: " << config.maxDuration->count() << L" seconds" << std::endl;
         }
@@ -365,26 +346,73 @@ int wmain(int argc, wchar_t** argv) {
             return segmentRequested.compare_exchange_strong(expected, false);
         };
 
-        RecorderStats stats = recorder.Record(config, controls);
+        auto ensureParentDirectory = [](const std::filesystem::path& path) {
+            if (path.has_parent_path() && !path.parent_path().empty()) {
+                std::filesystem::create_directories(path.parent_path());
+            }
+        };
 
+        while (true) {
+            DeviceEnumerator attemptEnumerator;
+            Microsoft::WRL::ComPtr<IMMDevice> device;
+            if (options.deviceIndex) {
+                device = attemptEnumerator.GetDeviceByIndex(*options.deviceIndex);
+            } else {
+                device = attemptEnumerator.GetDefaultRenderDevice();
+            }
+            if (!device) {
+                throw std::runtime_error("Unable to acquire playback device");
+            }
+            std::wstring friendlyName = DeviceEnumerator::GetFriendlyName(device.Get());
+            logger.Info(L"Selected playback device: " + friendlyName);
+
+            config.outputPath = EnsureUniquePath(baseOutputPath);
+            ensureParentDirectory(config.outputPath);
+            logger.Info(L"Output file: " + config.outputPath.wstring());
+
+            std::wcout << L"Recording system audio to " << config.outputPath.wstring() << std::endl;
+            if (reconnectAttempts > 0) {
+                std::wcout << L"[Reconnect] Attempt " << reconnectAttempts << L"/" << kMaxReconnectAttempts << std::endl;
+            }
+
+            LoopbackRecorder recorder(device, logger);
+            RecorderStats stats = recorder.Record(config, controls);
+
+            const bool userRequestedStop = stopRequested.load();
+            std::wcout << L"Recording finished." << std::endl;
+            std::wcout << L"Captured frames: " << stats.framesCaptured
+                       << L", silent frames: " << stats.silentFrames
+                       << L", paused frames: " << stats.framesWhilePaused
+                       << L", glitches: " << stats.glitchCount
+                       << L", capture timeouts: " << stats.watchdogTimeouts
+                       << L", ring waits: " << stats.ringBufferWaits
+                       << L", ring timeouts: " << stats.ringBufferTimeouts
+                       << L", writer waits: " << stats.writerWaitTimeouts
+                       << L", dropped frames: " << stats.framesDropped
+                       << L", segments: " << stats.segmentsWritten << std::endl;
+            if (stats.deviceInvalidated) {
+                std::wcout << L"Recording stopped because the playback device changed or disconnected." << std::endl;
+            }
+            if (stats.glitchCount > 0 || stats.watchdogTimeouts > 0) {
+                std::wcout << L"Tip: increase --latency-ms or --watchdog-ms for noisier systems." << std::endl;
+            }
+
+            if (stats.deviceInvalidated && !userRequestedStop) {
+                if (reconnectAttempts >= kMaxReconnectAttempts) {
+                    logger.Warn(L"Playback device disconnected too many times; stopping.");
+                    break;
+                }
+                ++reconnectAttempts;
+                logger.Warn(L"Playback device disconnected; retrying in " +
+                            std::to_wstring(kReconnectDelayMs) + L" ms (attempt " +
+                            std::to_wstring(reconnectAttempts) + L"/" + std::to_wstring(kMaxReconnectAttempts) + L").");
+                std::this_thread::sleep_for(std::chrono::milliseconds(kReconnectDelayMs));
+                stopRequested = false;
+                continue;
+            }
+            break;
+        }
         stopRequested = true;
-        std::wcout << L"Recording finished." << std::endl;
-        std::wcout << L"Captured frames: " << stats.framesCaptured
-                   << L", silent frames: " << stats.silentFrames
-                   << L", paused frames: " << stats.framesWhilePaused
-                   << L", glitches: " << stats.glitchCount
-                   << L", capture timeouts: " << stats.watchdogTimeouts
-                   << L", ring waits: " << stats.ringBufferWaits
-                   << L", ring timeouts: " << stats.ringBufferTimeouts
-                   << L", writer waits: " << stats.writerWaitTimeouts
-                   << L", dropped frames: " << stats.framesDropped
-                   << L", segments: " << stats.segmentsWritten << std::endl;
-        if (stats.deviceInvalidated) {
-            std::wcout << L"Recording stopped because the playback device changed or disconnected. Re-run after selecting an active device." << std::endl;
-        }
-        if (stats.glitchCount > 0 || stats.watchdogTimeouts > 0) {
-            std::wcout << L"Tip: increase --latency-ms or --watchdog-ms for noisier systems." << std::endl;
-        }
         return 0;
     } catch (const std::exception& ex) {
         std::string message = ex.what();
