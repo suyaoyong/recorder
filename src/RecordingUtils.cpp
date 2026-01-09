@@ -46,7 +46,14 @@ std::filesystem::path EnsureUniquePath(const std::filesystem::path& path) {
     if (path.empty()) {
         return path;
     }
-    if (!std::filesystem::exists(path)) {
+    auto collides = [](const std::filesystem::path& candidate) {
+        if (std::filesystem::exists(candidate)) {
+            return true;
+        }
+        const auto firstSegment = BuildSegmentPath(candidate, 0);
+        return std::filesystem::exists(firstSegment);
+    };
+    if (!collides(path)) {
         return path;
     }
 
@@ -61,7 +68,7 @@ std::filesystem::path EnsureUniquePath(const std::filesystem::path& path) {
         if (!extension.empty()) {
             candidate += extension;
         }
-        if (!std::filesystem::exists(candidate)) {
+        if (!collides(candidate)) {
             return candidate;
         }
     }
