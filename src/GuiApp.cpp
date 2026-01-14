@@ -27,6 +27,7 @@ constexpr UINT WM_APP_LOG_MESSAGE = WM_APP + 1;
 constexpr UINT WM_APP_RECORDER_DONE = WM_APP + 2;
 constexpr UINT WM_APP_OUTPUT_PATH = WM_APP + 3;
 constexpr UINT WM_APP_STATE_UPDATE = WM_APP + 4;
+constexpr UINT WM_APP_DEVICE_NAME = WM_APP + 5;
 
 enum ControlId : int {
     IDC_OUTPUT_EDIT = 1001,
@@ -41,6 +42,22 @@ enum ControlId : int {
     IDC_LOG_EDIT
 };
 
+enum MenuId : int {
+    IDM_FILE_NEW = 2001,
+    IDM_FILE_OPEN_FOLDER,
+    IDM_FILE_EXIT,
+    IDM_RECORD_START_STOP,
+    IDM_RECORD_PAUSE,
+    IDM_SETTINGS_FORMAT_WAV,
+    IDM_SETTINGS_FORMAT_MP3,
+    IDM_SETTINGS_BITRATE_128,
+    IDM_SETTINGS_BITRATE_192,
+    IDM_SETTINGS_BITRATE_256,
+    IDM_SETTINGS_BITRATE_320,
+    IDM_VIEW_CLEAR_LOG,
+    IDM_HELP_ABOUT
+};
+
 struct AppState {
     HWND hwnd = nullptr;
     HWND headerLabel = nullptr;
@@ -52,6 +69,9 @@ struct AppState {
     HWND pauseButton = nullptr;
     HWND logEdit = nullptr;
     HWND statusBar = nullptr;
+    HMENU mainMenu = nullptr;
+    HMENU settingsMenu = nullptr;
+    HMENU bitrateMenu = nullptr;
     HFONT uiFont = nullptr;
     HFONT uiFontBold = nullptr;
     HFONT uiFontTitle = nullptr;
@@ -72,6 +92,7 @@ struct AppState {
     enum class RecorderState { Idle, Starting, Recording, Stopping, Recovering };
     RecorderState state = RecorderState::Idle;
     std::filesystem::path currentOutputPath;
+    std::wstring currentDeviceName;
     std::chrono::steady_clock::time_point startTime{};
     std::chrono::steady_clock::time_point pauseStart{};
     std::chrono::milliseconds pausedTotal{0};
@@ -94,6 +115,11 @@ public:
 std::wstring ToWide(const std::string& text) {
     return std::wstring(text.begin(), text.end());
 }
+
+int GetBitrateFromEdit(HWND edit, int fallback);
+void UpdateStatusDetails(AppState* state);
+void UpdateMenuForState(AppState* state);
+void UpdateOutputExtension(AppState* state);
 
 std::wstring GetWindowTextString(HWND hwnd) {
     const int length = GetWindowTextLengthW(hwnd);
@@ -188,6 +214,7 @@ void UpdateStatusText(AppState* state) {
         break;
     }
     SendMessageW(state->statusBar, SB_SETTEXT, 0, reinterpret_cast<LPARAM>(text.c_str()));
+    UpdateStatusDetails(state);
 }
 
 void SetControlFont(HWND control, HFONT font) {
@@ -209,6 +236,57 @@ void AttachButtonIcon(HWND button, HICON icon, HIMAGELIST& imageList) {
     info.margin.left = 6;
     SendMessageW(button, BCM_SETIMAGELIST, 0, reinterpret_cast<LPARAM>(&info));
 }
+
+void PostDeviceNameUpdate(HWND hwnd, const std::wstring& name) {
+    auto payload = new std::wstring(name);
+    PostMessageW(hwnd, WM_APP_DEVICE_NAME, 0, reinterpret_cast<LPARAM>(payload));
+}
+
+void UpdateStatusDetails(AppState* state) {
+    if (!state || !state->statusBar) {
+        return;
+    }
+    const bool mp3Selected = state->formatCombo &&
+        SendMessageW(state->formatCombo, CB_GETCURSEL, 0, 0) == 1;
+    const int bitrate = GetBitrateFromEdit(state->bitrateEdit, state->defaultBitrate);
+    std::wstring detail = mp3Selected ? L"MP3" : L"WAV";
+    if (mp3Selected) {
+        detail += L" | ";
+        detail += std::to_wstring(bitrate);
+        detail += L" kbps";
+    }
+    if (!state->currentDeviceName.empty()) {
+        detail += L" | ";
+        detail += state->currentDeviceName;
+    }
+    SendMessageW(state->statusBar, SB_SETTEXT, 1, reinterpret_cast<LPARAM>(detail.c_str()));
+}
+
+void UpdateMenuForState(AppState* state) {
+    if (!state || !state->mainMenu) {
+        return;
+    }
+    const bool canEdit = state->state == AppState::RecorderState::Idle;
+    EnableMenuItem(state->mainMenu, IDM_FILE_NEW, MF_BYCOMMAND | (canEdit ? MF_ENABLED : MF_GRAYED));
+    EnableMenuItem(state->mainMenu, IDM_SETTINGS_FORMAT_WAV, MF_BYCOMMAND | (canEdit ? MF_ENABLED : MF_GRAYED));
+    EnableMenuItem(state->mainMenu, IDM_SETTINGS_FORMAT_MP3, MF_BYCOMMAND | (canEdit ? MF_ENABLED : MF_GRAYED));
+    EnableMenuItem(state->mainMenu, IDM_SETTINGS_BITRATE_128, MF_BYCOMMAND | (canEdit ? MF_ENABLED : MF_GRAYED));
+    EnableMenuItem(state->mainMenu, IDM_SETTINGS_BITRATE_192, MF_BYCOMMAND | (canEdit ? MF_ENABLED : MF_GRAYED));
+    EnableMenuItem(state->mainMenu, IDM_SETTINGS_BITRATE_256, MF_BYCOMMAND | (canEdit ? MF_ENABLED : MF_GRAYED));
+    EnableMenuItem(state->mainMenu, IDM_SETTINGS_BITRATE_320, MF_BYCOMMAND | (canEdit ? MF_ENABLED : MF_GRAYED));
+
+    const bool mp3Selected = state->formatCombo &&
+        SendMessageW(state->formatCombo, CB_GETCURSEL, 0, 0) == 1;
+    CheckMenuRadioItem(state->mainMenu, IDM_SETTINGS_FORMAT_WAV, IDM_SETTINGS_FORMAT_MP3,
+                       mp3Selected ? IDM_SETTINGS_FORMAT_MP3 : IDM_SETTINGS_FORMAT_WAV, MF_BYCOMMAND);
+    const int bitrate = GetBitrateFromEdit(state->bitrateEdit, state->defaultBitrate);
+    const int bitrateId = (bitrate <= 160 ? IDM_SETTINGS_BITRATE_128 :
+                           bitrate <= 224 ? IDM_SETTINGS_BITRATE_192 :
+                           bitrate <= 288 ? IDM_SETTINGS_BITRATE_256 : IDM_SETTINGS_BITRATE_320);
+    CheckMenuRadioItem(state->mainMenu, IDM_SETTINGS_BITRATE_128, IDM_SETTINGS_BITRATE_320,
+                       mp3Selected ? bitrateId : IDM_SETTINGS_BITRATE_192, MF_BYCOMMAND);
+    DrawMenuBar(state->hwnd);
+}
 void UpdateControlsForState(AppState* state) {
     const bool canStart = state->state == AppState::RecorderState::Idle;
     const bool canStop = state->state == AppState::RecorderState::Starting
@@ -225,10 +303,79 @@ void UpdateControlsForState(AppState* state) {
     EnableWindow(state->bitrateEdit, (canEdit && mp3Selected) ? TRUE : FALSE);
     EnableWindow(state->pauseButton, (state->state == AppState::RecorderState::Recording ||
                                       state->state == AppState::RecorderState::Recovering) ? TRUE : FALSE);
+    UpdateMenuForState(state);
 }
 
 void PostStateUpdate(HWND hwnd, AppState::RecorderState newState) {
     PostMessageW(hwnd, WM_APP_STATE_UPDATE, static_cast<WPARAM>(newState), 0);
+}
+
+void ClearLog(AppState* state) {
+    if (!state || !state->logEdit) {
+        return;
+    }
+    SetWindowTextW(state->logEdit, L"");
+}
+
+void UpdateStatusBarLayout(AppState* state) {
+    if (!state || !state->statusBar) {
+        return;
+    }
+    RECT rect{};
+    GetClientRect(state->hwnd, &rect);
+    const int width = rect.right - rect.left;
+    const int rightWidth = 320;
+    int parts[2] = { (std::max)(0, width - rightWidth), -1 };
+    SendMessageW(state->statusBar, SB_SETPARTS, 2, reinterpret_cast<LPARAM>(parts));
+}
+
+void BuildMainMenu(AppState* state) {
+    if (!state) {
+        return;
+    }
+    HMENU menu = CreateMenu();
+    HMENU fileMenu = CreatePopupMenu();
+    HMENU recordMenu = CreatePopupMenu();
+    HMENU settingsMenu = CreatePopupMenu();
+    HMENU formatMenu = CreatePopupMenu();
+    HMENU bitrateMenu = CreatePopupMenu();
+    HMENU viewMenu = CreatePopupMenu();
+    HMENU helpMenu = CreatePopupMenu();
+
+    AppendMenuW(fileMenu, MF_STRING, IDM_FILE_NEW, L"新建录音\tCtrl+N");
+    AppendMenuW(fileMenu, MF_STRING, IDM_FILE_OPEN_FOLDER, L"打开音频保存目录");
+    AppendMenuW(fileMenu, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(fileMenu, MF_STRING, IDM_FILE_EXIT, L"退出");
+
+    AppendMenuW(recordMenu, MF_STRING, IDM_RECORD_START_STOP, L"开始/停止\tCtrl+R");
+    AppendMenuW(recordMenu, MF_STRING, IDM_RECORD_PAUSE, L"暂停/继续\tCtrl+P");
+
+    AppendMenuW(formatMenu, MF_STRING, IDM_SETTINGS_FORMAT_WAV, L"WAV");
+    AppendMenuW(formatMenu, MF_STRING, IDM_SETTINGS_FORMAT_MP3, L"MP3");
+
+    AppendMenuW(bitrateMenu, MF_STRING, IDM_SETTINGS_BITRATE_128, L"128 kbps");
+    AppendMenuW(bitrateMenu, MF_STRING, IDM_SETTINGS_BITRATE_192, L"192 kbps");
+    AppendMenuW(bitrateMenu, MF_STRING, IDM_SETTINGS_BITRATE_256, L"256 kbps");
+    AppendMenuW(bitrateMenu, MF_STRING, IDM_SETTINGS_BITRATE_320, L"320 kbps");
+
+    AppendMenuW(settingsMenu, MF_POPUP, reinterpret_cast<UINT_PTR>(formatMenu), L"输出格式");
+    AppendMenuW(settingsMenu, MF_POPUP, reinterpret_cast<UINT_PTR>(bitrateMenu), L"MP3 比特率");
+
+    AppendMenuW(viewMenu, MF_STRING, IDM_VIEW_CLEAR_LOG, L"清空日志\tCtrl+L");
+
+    AppendMenuW(helpMenu, MF_STRING, IDM_HELP_ABOUT, L"关于\tF1");
+
+    AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(fileMenu), L"  文件  ");
+    AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(recordMenu), L"  录音  ");
+    AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(settingsMenu), L"  设置  ");
+    AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(viewMenu), L"  查看  ");
+    AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(helpMenu), L"  帮助  ");
+
+    state->mainMenu = menu;
+    state->settingsMenu = settingsMenu;
+    state->bitrateMenu = bitrateMenu;
+    SetMenu(state->hwnd, menu);
+    UpdateMenuForState(state);
 }
 
 std::filesystem::path BrowseForFolder(HWND owner) {
@@ -247,6 +394,23 @@ std::filesystem::path BrowseForFolder(HWND owner) {
     }
     CoTaskMemFree(pidl);
     return std::filesystem::path(pathBuffer);
+}
+
+std::filesystem::path GetDefaultOutputFolder() {
+    std::error_code ec;
+    auto current = std::filesystem::current_path(ec);
+    if (!ec && !current.empty()) {
+        return current;
+    }
+    wchar_t modulePath[MAX_PATH] = {};
+    DWORD len = GetModuleFileNameW(nullptr, modulePath, MAX_PATH);
+    if (len > 0) {
+        std::filesystem::path exePath(modulePath);
+        if (exePath.has_parent_path()) {
+            return exePath.parent_path();
+        }
+    }
+    return {};
 }
 
 void BrowseForOutputPath(AppState* state) {
@@ -296,9 +460,18 @@ void OpenOutputFolder(AppState* state) {
         target = current.parent_path();
     }
     if (target.empty()) {
+        target = GetDefaultOutputFolder();
+    }
+    if (target.empty()) {
+        AppendLog(state->logEdit, L"[界面] 无法打开目录：路径为空。");
         return;
     }
-    ShellExecuteW(nullptr, L"open", target.wstring().c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+    HINSTANCE res = ShellExecuteW(nullptr, L"open", target.wstring().c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+    if (reinterpret_cast<INT_PTR>(res) <= 32) {
+        AppendLog(state->logEdit, L"[界面] 打开目录失败：" + target.wstring());
+    } else {
+        AppendLog(state->logEdit, L"[界面] 已打开目录：" + target.wstring());
+    }
 }
 
 void UpdateOutputExtension(AppState* state) {
@@ -315,6 +488,26 @@ void UpdateOutputExtension(AppState* state) {
         ? EnsureExtension(outputPath, L".mp3")
         : EnsureExtension(outputPath, L".wav");
     SetWindowTextW(state->outputEdit, outputPath.wstring().c_str());
+    UpdateStatusDetails(state);
+    UpdateMenuForState(state);
+}
+
+void SetFormatSelection(AppState* state, bool mp3Selected) {
+    if (!state || !state->formatCombo) {
+        return;
+    }
+    SendMessageW(state->formatCombo, CB_SETCURSEL, mp3Selected ? 1 : 0, 0);
+    UpdateControlsForState(state);
+    UpdateOutputExtension(state);
+}
+
+void SetBitrateValue(AppState* state, int bitrate) {
+    if (!state || !state->bitrateEdit) {
+        return;
+    }
+    SetWindowTextW(state->bitrateEdit, std::to_wstring(bitrate).c_str());
+    UpdateStatusDetails(state);
+    UpdateMenuForState(state);
 }
 
 void PostLogMessage(HWND hwnd, const std::wstring& line, LogLevel level) {
@@ -354,6 +547,7 @@ void RunRecorder(AppState* state,
             }
             std::wstring friendly = DeviceEnumerator::GetFriendlyName(device.Get());
             threadLogger.Info(L"已选择播放设备：" + friendly);
+            PostDeviceNameUpdate(state->hwnd, friendly);
 
             RecorderConfig config;
             config.outputPath = mp3Enabled
@@ -509,8 +703,8 @@ void CreateChildControls(HWND hwnd, AppState* state) {
     const int labelHeight = 20;
     const int editHeight = 26;
     const int buttonHeight = 28;
-    const int buttonWidth = 90;
-    const int wideButtonWidth = 110;
+    const int buttonWidth = 86;
+    const int wideButtonWidth = 130;
     const int windowWidth = 620;
     const int contentWidth = windowWidth - padding * 2 - 12;
 
@@ -546,11 +740,11 @@ void CreateChildControls(HWND hwnd, AppState* state) {
     SetControlFont(outputLabel, font);
     state->outputEdit = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", DefaultOutputPath().wstring().c_str(),
                                         WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL,
-                                        groupLeft + 64, outputLabelY - 2, 290, editHeight,
+                                        groupLeft + 64, outputLabelY - 2, 270, editHeight,
                                         hwnd, reinterpret_cast<HMENU>(IDC_OUTPUT_EDIT), nullptr, nullptr);
     SetControlFont(state->outputEdit, font);
 
-    const int buttonRowX = groupLeft + 364;
+    const int buttonRowX = groupLeft + 344;
     HWND browseButton = CreateWindowW(L"BUTTON", L"选择文件",
                                       WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
                                       buttonRowX, outputLabelY - 2, buttonWidth, buttonHeight,
@@ -563,9 +757,9 @@ void CreateChildControls(HWND hwnd, AppState* state) {
                                             hwnd, reinterpret_cast<HMENU>(IDC_BROWSE_FOLDER), nullptr, nullptr);
     SetControlFont(browseFolderButton, font);
 
-    HWND openFolderButton = CreateWindowW(L"BUTTON", L"打开目录",
+    HWND openFolderButton = CreateWindowW(L"BUTTON", L"打开音频保存目录",
                                           WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
-                                          buttonRowX, outputLabelY + 32, buttonWidth, buttonHeight,
+                                          buttonRowX, outputLabelY + 32, wideButtonWidth + buttonWidth + 8, buttonHeight,
                                           hwnd, reinterpret_cast<HMENU>(IDC_OPEN_FOLDER), nullptr, nullptr);
     SetControlFont(openFolderButton, font);
 
@@ -662,6 +856,7 @@ LRESULT CALLBACK MainWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
         auto newState = std::make_unique<AppState>();
         newState->hwnd = hwnd;
         CreateChildControls(hwnd, newState.get());
+        BuildMainMenu(newState.get());
         newState->statusBar = CreateWindowExW(0, STATUSCLASSNAMEW, L"",
                                               WS_CHILD | WS_VISIBLE | SBARS_SIZEGRIP,
                                               0, 0, 0, 0, hwnd, nullptr, nullptr, nullptr);
@@ -669,6 +864,7 @@ LRESULT CALLBACK MainWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             SetControlFont(newState->statusBar, newState->uiFont);
         }
         SendMessageW(newState->statusBar, SB_SIMPLE, TRUE, 0);
+        UpdateStatusBarLayout(newState.get());
         UpdateStatusText(newState.get());
         SetTimer(hwnd, 1, 1000, nullptr);
         SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(newState.get()));
@@ -704,6 +900,73 @@ LRESULT CALLBACK MainWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 UpdateOutputExtension(state);
             }
             return 0;
+        case IDC_BITRATE_EDIT:
+            if (HIWORD(wParam) == EN_CHANGE) {
+                UpdateStatusDetails(state);
+                UpdateMenuForState(state);
+            }
+            return 0;
+        case IDM_FILE_NEW:
+            if (state->state == AppState::RecorderState::Idle) {
+                SetWindowTextW(state->outputEdit, DefaultOutputPath().wstring().c_str());
+                SetFormatSelection(state, true);
+                SetBitrateValue(state, state->defaultBitrate);
+                ClearLog(state);
+            }
+            return 0;
+        case IDM_FILE_OPEN_FOLDER:
+            OpenOutputFolder(state);
+            return 0;
+        case IDM_FILE_EXIT:
+            PostMessageW(hwnd, WM_CLOSE, 0, 0);
+            return 0;
+        case IDM_RECORD_START_STOP:
+            if (state->state == AppState::RecorderState::Idle) {
+                StartRecording(state);
+            } else {
+                StopRecording(state);
+            }
+            return 0;
+        case IDM_RECORD_PAUSE:
+            TogglePause(state);
+            return 0;
+        case IDM_SETTINGS_FORMAT_WAV:
+            if (state->state == AppState::RecorderState::Idle) {
+                SetFormatSelection(state, false);
+            }
+            return 0;
+        case IDM_SETTINGS_FORMAT_MP3:
+            if (state->state == AppState::RecorderState::Idle) {
+                SetFormatSelection(state, true);
+            }
+            return 0;
+        case IDM_SETTINGS_BITRATE_128:
+            if (state->state == AppState::RecorderState::Idle) {
+                SetBitrateValue(state, 128);
+            }
+            return 0;
+        case IDM_SETTINGS_BITRATE_192:
+            if (state->state == AppState::RecorderState::Idle) {
+                SetBitrateValue(state, 192);
+            }
+            return 0;
+        case IDM_SETTINGS_BITRATE_256:
+            if (state->state == AppState::RecorderState::Idle) {
+                SetBitrateValue(state, 256);
+            }
+            return 0;
+        case IDM_SETTINGS_BITRATE_320:
+            if (state->state == AppState::RecorderState::Idle) {
+                SetBitrateValue(state, 320);
+            }
+            return 0;
+        case IDM_VIEW_CLEAR_LOG:
+            ClearLog(state);
+            return 0;
+        case IDM_HELP_ABOUT:
+            MessageBoxW(hwnd, L"Loopback Recorder GUI\\n版本：Debug 构建\\n\\n支持 WASAPI 回环录音。",
+                        L"关于", MB_OK | MB_ICONINFORMATION);
+            return 0;
         default:
             break;
         }
@@ -734,6 +997,16 @@ LRESULT CALLBACK MainWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             }
         }
         UpdateStatusText(state);
+        return 0;
+    case WM_APP_DEVICE_NAME:
+        if (state) {
+            auto payload = reinterpret_cast<std::wstring*>(lParam);
+            if (payload) {
+                state->currentDeviceName = *payload;
+                delete payload;
+            }
+        }
+        UpdateStatusDetails(state);
         return 0;
     case WM_CTLCOLORSTATIC:
         if (state) {
@@ -770,6 +1043,8 @@ LRESULT CALLBACK MainWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
     case WM_SIZE:
         if (state && state->statusBar) {
             SendMessageW(state->statusBar, WM_SIZE, 0, 0);
+            UpdateStatusBarLayout(state);
+            UpdateStatusDetails(state);
         }
         return 0;
     case WM_ERASEBKGND:
@@ -880,10 +1155,24 @@ int APIENTRY wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int nCmdShow) {
     ShowWindow(hwnd, nCmdShow);
     UpdateWindow(hwnd);
 
+    ACCEL accels[] = {
+        { FCONTROL | FVIRTKEY, 'N', IDM_FILE_NEW },
+        { FCONTROL | FVIRTKEY, 'R', IDM_RECORD_START_STOP },
+        { FCONTROL | FVIRTKEY, 'P', IDM_RECORD_PAUSE },
+        { FCONTROL | FVIRTKEY, 'L', IDM_VIEW_CLEAR_LOG },
+        { FVIRTKEY, VK_F1, IDM_HELP_ABOUT }
+    };
+    HACCEL accelTable = CreateAcceleratorTableW(accels, static_cast<int>(sizeof(accels) / sizeof(accels[0])));
+
     MSG msg;
     while (GetMessageW(&msg, nullptr, 0, 0)) {
-        TranslateMessage(&msg);
-        DispatchMessageW(&msg);
+        if (!TranslateAcceleratorW(hwnd, accelTable, &msg)) {
+            TranslateMessage(&msg);
+            DispatchMessageW(&msg);
+        }
+    }
+    if (accelTable) {
+        DestroyAcceleratorTable(accelTable);
     }
     return static_cast<int>(msg.wParam);
 }
