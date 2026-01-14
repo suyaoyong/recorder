@@ -83,15 +83,15 @@ void ConvertRecordedSegmentsToMp3(const std::filesystem::path& wavBasePath,
     if (segmentCount == 0) {
         return;
     }
-    logger.Info(L"Converting " + std::to_wstring(segmentCount) + L" segment(s) to MP3...");
+    logger.Info(L"正在转换 " + std::to_wstring(segmentCount) + L" 个分段为 MP3...");
     for (uint32_t i = 0; i < segmentCount; ++i) {
         const auto wavSegment = BuildSegmentPath(wavBasePath, i);
         const auto mp3Segment = BuildSegmentPath(mp3BasePath, i);
         if (!std::filesystem::exists(wavSegment)) {
-            throw std::runtime_error("Missing WAV segment for conversion: " + wavSegment.string());
+            throw std::runtime_error("缺少用于转换的 WAV 分段：" + wavSegment.string());
         }
-        logger.Info(L"[MP3] Encoding segment #" + std::to_wstring(i + 1) + L": " + mp3Segment.wstring());
+        logger.Info(L"[MP3] 正在编码分段 #" + std::to_wstring(i + 1) + L"：" + mp3Segment.wstring());
         Mp3Converter::ConvertWavToMp3(wavSegment, mp3Segment, options, logger);
     }
-    logger.Info(L"MP3 conversion finished.");
+    logger.Info(L"MP3 转换完成。");
 }

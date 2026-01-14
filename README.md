@@ -46,10 +46,10 @@
 # 1. 生成工程（默认生成 build/ 目录）
 cmake -S . -B build
 
-# 2. 使用 MSVC 多配置生成器构建 Release
-cmake --build build --config Release
+# 2. 使用 MSVC 多配置生成器构建 Debug
+cmake --build build --config Debug
 
-# 生成的 loopback_recorder.exe 位于 build/Release/
+# 生成的 loopback_recorder.exe 位于 build/Debug/
 ```
 
 ## 运行示例

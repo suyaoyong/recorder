@@ -19,6 +19,10 @@ add_executable(loopback_recorder
 
 target_include_directories(loopback_recorder PRIVATE src)
 
+if (MSVC)
+    target_compile_options(loopback_recorder PRIVATE /utf-8)
+endif()
+
 target_link_libraries(loopback_recorder PRIVATE
     ole32
     avrt
@@ -38,11 +42,17 @@ add_executable(loopback_recorder_gui
 
 target_include_directories(loopback_recorder_gui PRIVATE src)
 
+if (MSVC)
+    target_compile_options(loopback_recorder_gui PRIVATE /utf-8)
+endif()
+
 target_link_libraries(loopback_recorder_gui PRIVATE
     ole32
     avrt
     user32
     comdlg32
+    comctl32
+    shell32
 )
 
 set_target_properties(loopback_recorder_gui PROPERTIES WIN32_EXECUTABLE YES)

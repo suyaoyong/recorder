@@ -1,4 +1,4 @@
-#include "Logger.h"
+﻿#include "Logger.h"
 
 #include <chrono>
 #include <codecvt>
@@ -16,7 +16,7 @@ void Logger::EnableFileLogging(const std::filesystem::path& path) {
     }
     file_.open(path, std::ios::app);
     if (!file_) {
-        throw std::runtime_error("Failed to open log file: " + path.string());
+        throw std::runtime_error("打开日志文件失败：" + path.string());
     }
     // Ensure Unicode device names serialize reliably (UTF-8 on disk)
     file_.imbue(std::locale(std::locale::classic(), new std::codecvt_utf8_utf16<wchar_t>()));
@@ -67,11 +67,11 @@ std::wstring Logger::Timestamp() const {
 std::wstring Logger::LevelLabel(LogLevel level) const {
     switch (level) {
     case LogLevel::Info:
-        return L"INFO";
+        return L"信息";
     case LogLevel::Warning:
-        return L"WARN";
+        return L"警告";
     case LogLevel::Error:
-        return L"ERROR";
+        return L"错误";
     }
-    return L"LOG";
+    return L"日志";
 }

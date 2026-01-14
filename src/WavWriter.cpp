@@ -16,7 +16,7 @@ WavWriter::WavWriter(const std::filesystem::path& path, const WAVEFORMATEX& form
     std::filesystem::remove(path_, removeEc);
     stream_.open(path, std::ios::binary | std::ios::trunc);
     if (!stream_) {
-        throw std::runtime_error("Failed to open output file");
+        throw std::runtime_error("打开输出文件失败");
     }
     formatBlob_.assign(reinterpret_cast<const std::byte*>(&format),
                        reinterpret_cast<const std::byte*>(&format) + sizeof(WAVEFORMATEX) + format.cbSize);
@@ -29,11 +29,11 @@ WavWriter::~WavWriter() {
 
 void WavWriter::Write(const BYTE* data, size_t byteCount) {
     if (!stream_) {
-        throw std::runtime_error("WAV stream is not open");
+        throw std::runtime_error("WAV 流未打开");
     }
     stream_.write(reinterpret_cast<const char*>(data), byteCount);
     if (!stream_) {
-        throw std::runtime_error("Failed to write WAV data");
+        throw std::runtime_error("写入 WAV 数据失败");
     }
     dataBytes_ += static_cast<uint32_t>(byteCount);
 }
@@ -44,7 +44,7 @@ void WavWriter::Flush() {
     }
     stream_.flush();
     if (!stream_) {
-        throw std::runtime_error("Failed to flush WAV data to disk");
+        throw std::runtime_error("刷新 WAV 数据到磁盘失败");
     }
 }
 

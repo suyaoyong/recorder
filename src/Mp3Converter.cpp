@@ -92,7 +92,7 @@ LameApi LoadLameApi() {
                 FARPROC proc = GetProcAddress(module, name);
                 if (!proc) {
                     FreeLibrary(module);
-                    throw std::runtime_error(std::string("libmp3lame missing symbol: ") + name);
+                    throw std::runtime_error(std::string("libmp3lame 缺少符号：") + name);
                 }
                 return proc;
             };
@@ -111,8 +111,8 @@ LameApi LoadLameApi() {
         }
     }
     throw std::runtime_error(
-        "Unable to load libmp3lame.dll or lame_enc.dll. Place the DLL next to loopback_recorder.exe, set LAME_DLL_PATH, "
-        "or install LAME for Windows.");
+        "无法加载 libmp3lame.dll 或 lame_enc.dll。请将 DLL 放在 loopback_recorder.exe 同目录，设置 LAME_DLL_PATH，"
+        "或安装 Windows 版 LAME。");
 }
 
 const LameApi& GetLameApi() {
@@ -141,7 +141,7 @@ struct WavMetadata {
 void ReadBytes(std::ifstream& stream, char* dest, size_t size) {
     stream.read(dest, static_cast<std::streamsize>(size));
     if (!stream) {
-        throw std::runtime_error("Unexpected end of WAV file while reading chunk");
+        throw std::runtime_error("读取 WAV 分块时意外结束");
     }
 }
 
@@ -159,7 +159,7 @@ WavMetadata ParseWav(std::ifstream& stream) {
     RiffHeader riff{};
     ReadBytes(stream, reinterpret_cast<char*>(&riff), sizeof(riff));
     if (std::string(riff.id, riff.id + 4) != "RIFF" || std::string(riff.format, riff.format + 4) != "WAVE") {
-        throw std::runtime_error("Input file is not a RIFF/WAVE file");
+        throw std::runtime_error("输入文件不是 RIFF/WAVE 文件");
     }
 
     WavMetadata metadata;
@@ -180,7 +180,7 @@ WavMetadata ParseWav(std::ifstream& stream) {
                 stream.seekg(1, std::ios::cur);
             }
             if (buffer.size() < sizeof(WAVEFORMATEX)) {
-                throw std::runtime_error("fmt chunk too small");
+                throw std::runtime_error("fmt 块过小");
             }
             std::memcpy(&metadata.format, buffer.data(), sizeof(WAVEFORMATEX));
             if (metadata.format.wFormatTag == WAVE_FORMAT_EXTENSIBLE && buffer.size() >= sizeof(WAVEFORMATEXTENSIBLE)) {
@@ -211,13 +211,13 @@ WavMetadata ParseWav(std::ifstream& stream) {
     }
 
     if (!fmtFound || !dataFound) {
-        throw std::runtime_error("WAV file is missing fmt or data chunk");
+        throw std::runtime_error("WAV 文件缺少 fmt 或 data 块");
     }
     if (metadata.format.nChannels == 0 || metadata.format.nSamplesPerSec == 0) {
-        throw std::runtime_error("Unsupported WAV format");
+        throw std::runtime_error("不支持的 WAV 格式");
     }
     if (metadata.dataSize == 0) {
-        throw std::runtime_error("WAV file contains no audio data");
+        throw std::runtime_error("WAV 文件不包含音频数据");
     }
     stream.clear();
     stream.seekg(static_cast<std::streamoff>(metadata.dataOffset), std::ios::beg);
@@ -329,7 +329,7 @@ void ConvertSamples(const uint8_t* source,
             }
         }
     } else {
-        throw std::runtime_error("Only 16-bit PCM or 32-bit float WAV files are supported");
+        throw std::runtime_error("仅支持 16-bit PCM 或 32-bit float 的 WAV 文件");
     }
 }
 
@@ -340,23 +340,23 @@ void Mp3Converter::ConvertWavToMp3(const std::filesystem::path& wavPath,
                                    const Mp3ConversionOptions& options,
                                    Logger& logger) {
     if (wavPath.empty()) {
-        throw std::runtime_error("Input WAV path is empty");
+        throw std::runtime_error("输入的 WAV 路径为空");
     }
     if (!std::filesystem::exists(wavPath)) {
-        throw std::runtime_error("Input WAV does not exist: " + wavPath.string());
+        throw std::runtime_error("输入的 WAV 不存在：" + wavPath.string());
     }
 
     std::ifstream wavStream(wavPath, std::ios::binary);
     if (!wavStream) {
-        throw std::runtime_error("Failed to open WAV file for reading: " + wavPath.string());
+        throw std::runtime_error("打开 WAV 文件读取失败：" + wavPath.string());
     }
 
     WavMetadata metadata = ParseWav(wavStream);
     const size_t targetChannels = static_cast<size_t>(std::min<uint16_t>(metadata.format.nChannels, 2));
     if (metadata.format.nChannels > targetChannels) {
-        logger.Warn(L"MP3 encoder only supports mono/stereo; down-mixing " +
-                    std::to_wstring(metadata.format.nChannels) + L" channel(s) to " +
-                    std::to_wstring(targetChannels) + L".");
+        logger.Warn(L"MP3 编码器仅支持单声道/立体声；将 " +
+                    std::to_wstring(metadata.format.nChannels) + L" 声道下混到 " +
+                    std::to_wstring(targetChannels) + L"。");
     }
 
     const auto& lame = GetLameApi();
@@ -372,7 +372,7 @@ void Mp3Converter::ConvertWavToMp3(const std::filesystem::path& wavPath,
     encoder.api = &lame;
     encoder.handle = lame.init();
     if (!encoder.handle) {
-        throw std::runtime_error("lame_init failed");
+        throw std::runtime_error("lame_init 失败");
     }
 
     const auto bitrate = static_cast<int>(std::clamp<uint32_t>(options.bitrateKbps, 64, 320));
@@ -383,23 +383,23 @@ void Mp3Converter::ConvertWavToMp3(const std::filesystem::path& wavPath,
     lame.set_mode(encoder.handle, targetChannels == 1 ? kLameModeMono : kLameModeStereo);
     lame.set_quality(encoder.handle, 2);
     if (lame.init_params(encoder.handle) < 0) {
-        throw std::runtime_error("lame_init_params failed");
+        throw std::runtime_error("lame_init_params 失败");
     }
     if (!lame.modulePath.empty()) {
-        logger.Info(L"[MP3] Using libmp3lame from " + lame.modulePath);
+        logger.Info(L"[MP3] 使用 libmp3lame：" + lame.modulePath);
     }
-    logger.Info(L"[MP3] Input format: channels=" + std::to_wstring(metadata.format.nChannels) +
-                L", rate=" + std::to_wstring(metadata.format.nSamplesPerSec) +
-                L" Hz, bits=" + std::to_wstring(metadata.format.wBitsPerSample));
+    logger.Info(L"[MP3] 输入格式：声道=" + std::to_wstring(metadata.format.nChannels) +
+                L"，采样率=" + std::to_wstring(metadata.format.nSamplesPerSec) +
+                L" Hz，位深=" + std::to_wstring(metadata.format.wBitsPerSample));
 
     std::ofstream mp3Stream(mp3Path, std::ios::binary | std::ios::trunc);
     if (!mp3Stream) {
-        throw std::runtime_error("Failed to open MP3 file for writing: " + mp3Path.string());
+        throw std::runtime_error("打开 MP3 文件写入失败：" + mp3Path.string());
     }
 
     const size_t frameBytes = metadata.format.nBlockAlign;
     if (frameBytes == 0) {
-        throw std::runtime_error("Invalid WAV block alignment");
+        throw std::runtime_error("无效的 WAV 块对齐");
     }
 
     std::vector<uint8_t> rawBuffer(frameBytes * kFramesPerChunk);
@@ -428,21 +428,21 @@ void Mp3Converter::ConvertWavToMp3(const std::filesystem::path& wavPath,
                                                            mp3Buffer.data(),
                                                            static_cast<int>(mp3Buffer.size()));
         if (encoded < 0) {
-            throw std::runtime_error("lame_encode_buffer_interleaved failed with code " + std::to_string(encoded));
+            throw std::runtime_error("lame_encode_buffer_interleaved 失败，错误码 " + std::to_string(encoded));
         }
         mp3Stream.write(reinterpret_cast<const char*>(mp3Buffer.data()), encoded);
     }
 
     const int flushBytes = lame.flush(encoder.handle, mp3Buffer.data(), static_cast<int>(mp3Buffer.size()));
     if (flushBytes < 0) {
-        throw std::runtime_error("lame_encode_flush failed with code " + std::to_string(flushBytes));
+        throw std::runtime_error("lame_encode_flush 失败，错误码 " + std::to_string(flushBytes));
     }
     if (flushBytes > 0) {
         mp3Stream.write(reinterpret_cast<const char*>(mp3Buffer.data()), flushBytes);
     }
     mp3Stream.flush();
 
-    logger.Info(L"MP3 created: " + mp3Path.wstring());
+    logger.Info(L"MP3 已生成：" + mp3Path.wstring());
 }
 
 Mp3StreamWriter::Mp3StreamWriter(const std::filesystem::path& path,
@@ -464,20 +464,20 @@ Mp3StreamWriter::Mp3StreamWriter(const std::filesystem::path& path,
 
         bytesPerFrame_ = format_.nBlockAlign;
         if (bytesPerFrame_ == 0) {
-            throw std::runtime_error("Invalid audio block alignment");
+            throw std::runtime_error("无效的音频块对齐");
         }
 
         targetChannels_ = static_cast<size_t>(std::min<uint16_t>(format_.nChannels, 2));
         if (format_.nChannels > targetChannels_) {
-            logger.Info(L"[MP3] Down-mixing " + std::to_wstring(format_.nChannels) +
-                        L" channel(s) to " + std::to_wstring(targetChannels_) + L".");
+            logger.Info(L"[MP3] 正在下混 " + std::to_wstring(format_.nChannels) +
+                        L" 声道到 " + std::to_wstring(targetChannels_) + L"。");
         }
 
         const auto& lame = GetLameApi();
         api_ = &lame;
         handle_ = lame.init();
         if (!handle_) {
-            throw std::runtime_error("lame_init failed");
+            throw std::runtime_error("lame_init 失败");
         }
 
         const auto bitrate = static_cast<int>(std::clamp<uint32_t>(options.bitrateKbps, 64, 320));
@@ -488,21 +488,21 @@ Mp3StreamWriter::Mp3StreamWriter(const std::filesystem::path& path,
         lame.set_mode(handle_, targetChannels_ == 1 ? kLameModeMono : kLameModeStereo);
         lame.set_quality(handle_, 2);
         if (lame.init_params(handle_) < 0) {
-            throw std::runtime_error("lame_init_params failed");
+            throw std::runtime_error("lame_init_params 失败");
         }
         if (!lame.modulePath.empty()) {
-            logger.Info(L"[MP3] Using libmp3lame from " + lame.modulePath);
+            logger.Info(L"[MP3] 使用 libmp3lame：" + lame.modulePath);
         }
-        logger.Info(L"[MP3] Live encoding: channels=" + std::to_wstring(format_.nChannels) +
-                    L", rate=" + std::to_wstring(format_.nSamplesPerSec) +
-                    L" Hz, bits=" + std::to_wstring(format_.wBitsPerSample) +
-                    L", bitrate=" + std::to_wstring(bitrate) + L" kbps.");
+        logger.Info(L"[MP3] 实时编码：声道=" + std::to_wstring(format_.nChannels) +
+                    L"，采样率=" + std::to_wstring(format_.nSamplesPerSec) +
+                    L" Hz，位深=" + std::to_wstring(format_.wBitsPerSample) +
+                    L"，比特率=" + std::to_wstring(bitrate) + L" kbps。");
 
         mp3Buffer_.resize(8192);
 
         stream_.open(path_, std::ios::binary | std::ios::trunc);
         if (!stream_) {
-            throw std::runtime_error("Failed to open MP3 file for writing: " + path_.string());
+            throw std::runtime_error("打开 MP3 文件写入失败：" + path_.string());
         }
     } catch (...) {
         if (api_ && handle_) {
@@ -525,7 +525,7 @@ void Mp3StreamWriter::Write(const BYTE* data, size_t byteCount) {
         return;
     }
     if (!stream_) {
-        throw std::runtime_error("MP3 stream is not open");
+        throw std::runtime_error("MP3 流未打开");
     }
     if (byteCount == 0) {
         return;
@@ -554,7 +554,7 @@ void Mp3StreamWriter::Write(const BYTE* data, size_t byteCount) {
                                                         mp3Buffer_.data(),
                                                         static_cast<int>(mp3Buffer_.size()));
     if (encoded < 0) {
-        throw std::runtime_error("lame_encode_buffer_interleaved failed with code " + std::to_string(encoded));
+        throw std::runtime_error("lame_encode_buffer_interleaved 失败，错误码 " + std::to_string(encoded));
     }
     if (encoded > 0) {
         stream_.write(reinterpret_cast<const char*>(mp3Buffer_.data()), encoded);
@@ -573,7 +573,7 @@ void Mp3StreamWriter::Flush() {
     }
     stream_.flush();
     if (!stream_) {
-        throw std::runtime_error("Failed to flush MP3 data to disk");
+        throw std::runtime_error("刷新 MP3 数据到磁盘失败");
     }
 }
 
@@ -604,7 +604,7 @@ void Mp3StreamWriter::Close() {
                                                                     mp3Buffer_.data(),
                                                                     static_cast<int>(mp3Buffer_.size()));
                 if (encoded < 0) {
-                    throw std::runtime_error("lame_encode_buffer_interleaved failed with code " + std::to_string(encoded));
+                    throw std::runtime_error("lame_encode_buffer_interleaved 失败，错误码 " + std::to_string(encoded));
                 }
                 if (encoded > 0) {
                     stream_.write(reinterpret_cast<const char*>(mp3Buffer_.data()), encoded);
@@ -620,7 +620,7 @@ void Mp3StreamWriter::Close() {
             }
             const int flushBytes = lame->flush(handle_, mp3Buffer_.data(), static_cast<int>(mp3Buffer_.size()));
             if (flushBytes < 0) {
-                throw std::runtime_error("lame_encode_flush failed with code " + std::to_string(flushBytes));
+                throw std::runtime_error("lame_encode_flush 失败，错误码 " + std::to_string(flushBytes));
             }
             if (flushBytes > 0) {
                 stream_.write(reinterpret_cast<const char*>(mp3Buffer_.data()), flushBytes);
@@ -639,6 +639,6 @@ void Mp3StreamWriter::Close() {
     }
 
     if (logger_) {
-        logger_->Info(L"MP3 stream finalized: " + path_.wstring());
+        logger_->Info(L"MP3 流已完成：" + path_.wstring());
     }
 }

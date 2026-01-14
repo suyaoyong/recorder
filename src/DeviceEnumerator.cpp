@@ -1,4 +1,4 @@
-#include "DeviceEnumerator.h"
+﻿#include "DeviceEnumerator.h"
 #include "HResultUtils.h"
 
 #include <Functiondiscoverykeys_devpkey.h>
@@ -14,7 +14,7 @@ DeviceEnumerator::DeviceEnumerator() {
     HRESULT hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
                                   IID_PPV_ARGS(&enumerator_));
     if (FAILED(hr)) {
-        throw std::runtime_error("Failed to create MMDeviceEnumerator: " + DescribeHRESULTA(hr));
+        throw std::runtime_error("创建 MMDeviceEnumerator 失败：" + DescribeHRESULTA(hr));
     }
 }
 
@@ -23,12 +23,12 @@ std::vector<DeviceInfo> DeviceEnumerator::ListRenderDevices() const {
     ComPtr<IMMDeviceCollection> collection;
     HRESULT hr = enumerator_->EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE, &collection);
     if (FAILED(hr)) {
-        throw std::runtime_error("EnumAudioEndpoints failed: " + DescribeHRESULTA(hr));
+        throw std::runtime_error("EnumAudioEndpoints 失败：" + DescribeHRESULTA(hr));
     }
     UINT count = 0;
     hr = collection->GetCount(&count);
     if (FAILED(hr)) {
-        throw std::runtime_error("IMMDeviceCollection::GetCount failed: " + DescribeHRESULTA(hr));
+        throw std::runtime_error("IMMDeviceCollection::GetCount 失败：" + DescribeHRESULTA(hr));
     }
 
     std::wstring defaultId;
@@ -46,7 +46,7 @@ std::vector<DeviceInfo> DeviceEnumerator::ListRenderDevices() const {
         ComPtr<IMMDevice> device;
         hr = collection->Item(i, &device);
         if (FAILED(hr)) {
-            throw std::runtime_error("IMMDeviceCollection::Item failed: " + DescribeHRESULTA(hr));
+            throw std::runtime_error("IMMDeviceCollection::Item 失败：" + DescribeHRESULTA(hr));
         }
         DeviceInfo info;
         LPWSTR id = nullptr;
@@ -65,20 +65,20 @@ ComPtr<IMMDevice> DeviceEnumerator::GetDeviceByIndex(size_t index) const {
     ComPtr<IMMDeviceCollection> collection;
     HRESULT hr = enumerator_->EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE, &collection);
     if (FAILED(hr)) {
-        throw std::runtime_error("EnumAudioEndpoints failed: " + DescribeHRESULTA(hr));
+        throw std::runtime_error("EnumAudioEndpoints 失败：" + DescribeHRESULTA(hr));
     }
     UINT count = 0;
     hr = collection->GetCount(&count);
     if (FAILED(hr)) {
-        throw std::runtime_error("IMMDeviceCollection::GetCount failed: " + DescribeHRESULTA(hr));
+        throw std::runtime_error("IMMDeviceCollection::GetCount 失败：" + DescribeHRESULTA(hr));
     }
     if (index >= count) {
-        throw std::out_of_range("Device index out of range");
+        throw std::out_of_range("设备索引超出范围");
     }
     ComPtr<IMMDevice> device;
     hr = collection->Item(static_cast<UINT>(index), &device);
     if (FAILED(hr)) {
-        throw std::runtime_error("IMMDeviceCollection::Item failed: " + DescribeHRESULTA(hr));
+        throw std::runtime_error("IMMDeviceCollection::Item 失败：" + DescribeHRESULTA(hr));
     }
     return device;
 }
@@ -87,22 +87,22 @@ ComPtr<IMMDevice> DeviceEnumerator::GetDefaultRenderDevice() const {
     ComPtr<IMMDevice> device;
     HRESULT hr = enumerator_->GetDefaultAudioEndpoint(eRender, eConsole, &device);
     if (FAILED(hr)) {
-        throw std::runtime_error("GetDefaultAudioEndpoint failed: " + DescribeHRESULTA(hr));
+        throw std::runtime_error("GetDefaultAudioEndpoint 失败：" + DescribeHRESULTA(hr));
     }
     return device;
 }
 
 std::wstring DeviceEnumerator::GetFriendlyName(IMMDevice* device) {
     if (!device) {
-        return L"<Unknown>";
+        return L"<未知>";
     }
     ComPtr<IPropertyStore> props;
     if (FAILED(device->OpenPropertyStore(STGM_READ, &props))) {
-        return L"<Unknown>";
+        return L"<未知>";
     }
     PROPVARIANT varName;
     PropVariantInit(&varName);
-    std::wstring name = L"<Unknown>";
+    std::wstring name = L"<未知>";
     if (SUCCEEDED(props->GetValue(PKEY_Device_FriendlyName, &varName)) && varName.vt == VT_LPWSTR && varName.pwszVal) {
         name = varName.pwszVal;
     }

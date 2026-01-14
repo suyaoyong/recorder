@@ -34,7 +34,7 @@ public:
         DWORD taskIndex = 0;
         handle_ = AvSetMmThreadCharacteristicsW(L"Pro Audio", &taskIndex);
         if (!handle_) {
-            std::wcerr << L"Warning: failed to enter MMCSS 'Pro Audio' profile; continuing with normal priority." << std::endl;
+            std::wcerr << L"警告：无法进入 MMCSS“Pro Audio”优先级配置，将使用普通优先级继续。" << std::endl;
         }
     }
     ~AvrtScope() {
@@ -128,23 +128,23 @@ LoopbackRecorder::LoopbackRecorder(ComPtr<IMMDevice> renderDevice, Logger& logge
 RecorderStats LoopbackRecorder::Record(const RecorderConfig& config, const RecorderControls& controls) {
     RecorderStats stats;
     if (!device_) {
-        throw std::runtime_error("Render device is null");
+        throw std::runtime_error("渲染设备为空");
     }
 
     ComPtr<IAudioClient> audioClient;
     HRESULT hr = device_->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr, &audioClient);
     if (FAILED(hr)) {
         std::wstring message = DescribeHRESULTW(hr);
-        logger_.Error(std::wstring(L"IAudioClient activation failed: ") + message);
-        throw std::runtime_error("IAudioClient activation failed: " + DescribeHRESULTA(hr));
+        logger_.Error(std::wstring(L"IAudioClient 激活失败：") + message);
+        throw std::runtime_error("IAudioClient 激活失败：" + DescribeHRESULTA(hr));
     }
 
     WAVEFORMATEX* format = nullptr;
     hr = audioClient->GetMixFormat(&format);
     if (FAILED(hr)) {
         std::wstring message = DescribeHRESULTW(hr);
-        logger_.Error(std::wstring(L"GetMixFormat failed: ") + message);
-        throw std::runtime_error("GetMixFormat failed: " + DescribeHRESULTA(hr));
+        logger_.Error(std::wstring(L"GetMixFormat 失败：") + message);
+        throw std::runtime_error("GetMixFormat 失败：" + DescribeHRESULTA(hr));
     }
     std::unique_ptr<WAVEFORMATEX, decltype(&CoTaskMemFree)> mixFormat(format, CoTaskMemFree);
 
@@ -154,7 +154,7 @@ RecorderStats LoopbackRecorder::Record(const RecorderConfig& config, const Recor
     const std::wstring outputPathText = localConfig.outputPath.wstring();
     const std::wstring outputExt = localConfig.outputPath.extension().wstring();
     const std::wstring segmentSuffix = outputExt.empty() ? L"" : outputExt;
-    logger_.Info(L"Recording base path: " + outputPathText + L" (files use _001" + segmentSuffix + L" numbering).");
+    logger_.Info(L"录音基路径：" + outputPathText + L"（分段文件使用 _001" + segmentSuffix + L" 编号）。");
 
     const auto latency = std::clamp(localConfig.latencyHint, std::chrono::milliseconds(10), std::chrono::milliseconds(500));
     const REFERENCE_TIME bufferDuration = static_cast<REFERENCE_TIME>(latency.count()) * 10000; // 100ns units
@@ -167,41 +167,41 @@ RecorderStats LoopbackRecorder::Record(const RecorderConfig& config, const Recor
                                  nullptr);
     if (FAILED(hr)) {
         std::wstring message = DescribeHRESULTW(hr);
-        logger_.Error(std::wstring(L"IAudioClient Initialize failed: ") + message);
-        throw std::runtime_error("IAudioClient Initialize failed: " + DescribeHRESULTA(hr));
+        logger_.Error(std::wstring(L"IAudioClient Initialize 失败：") + message);
+        throw std::runtime_error("IAudioClient Initialize 失败：" + DescribeHRESULTA(hr));
     }
 
     HandleGuard samplesReadyEvent(CreateEventW(nullptr, FALSE, FALSE, nullptr));
     if (!samplesReadyEvent.get()) {
-        throw std::runtime_error("Failed to create event handle");
+        throw std::runtime_error("创建事件句柄失败");
     }
 
     hr = audioClient->SetEventHandle(samplesReadyEvent.get());
     if (FAILED(hr)) {
         std::wstring message = DescribeHRESULTW(hr);
-        logger_.Error(std::wstring(L"SetEventHandle failed: ") + message);
-        throw std::runtime_error("SetEventHandle failed: " + DescribeHRESULTA(hr));
+        logger_.Error(std::wstring(L"SetEventHandle 失败：") + message);
+        throw std::runtime_error("SetEventHandle 失败：" + DescribeHRESULTA(hr));
     }
 
     ComPtr<IAudioCaptureClient> captureClient;
     hr = audioClient->GetService(IID_PPV_ARGS(&captureClient));
     if (FAILED(hr)) {
         std::wstring message = DescribeHRESULTW(hr);
-        logger_.Error(std::wstring(L"Failed to acquire IAudioCaptureClient: ") + message);
-        throw std::runtime_error("Failed to acquire IAudioCaptureClient: " + DescribeHRESULTA(hr));
+        logger_.Error(std::wstring(L"获取 IAudioCaptureClient 失败：") + message);
+        throw std::runtime_error("获取 IAudioCaptureClient 失败：" + DescribeHRESULTA(hr));
     }
 
     HandleGuard dataReadyEvent(CreateEventW(nullptr, FALSE, FALSE, nullptr));
     HandleGuard spaceAvailableEvent(CreateEventW(nullptr, FALSE, TRUE, nullptr));
     if (!dataReadyEvent.get() || !spaceAvailableEvent.get()) {
-        throw std::runtime_error("Failed to create writer synchronization events");
+        throw std::runtime_error("创建写入线程同步事件失败");
     }
     HandleGuard userStopEvent;
     const bool hasStopCallback = static_cast<bool>(controls.shouldStop);
     if (hasStopCallback) {
         userStopEvent.reset(CreateEventW(nullptr, TRUE, FALSE, nullptr));
         if (!userStopEvent.get()) {
-            throw std::runtime_error("Failed to create user stop event");
+            throw std::runtime_error("创建用户停止事件失败");
         }
     }
 
@@ -209,10 +209,10 @@ RecorderStats LoopbackRecorder::Record(const RecorderConfig& config, const Recor
     hr = audioClient->Start();
     if (FAILED(hr)) {
         std::wstring message = DescribeHRESULTW(hr);
-        logger_.Error(std::wstring(L"Failed to start audio client: ") + message);
-        throw std::runtime_error("Failed to start audio client: " + DescribeHRESULTA(hr));
+        logger_.Error(std::wstring(L"启动音频客户端失败：") + message);
+        throw std::runtime_error("启动音频客户端失败：" + DescribeHRESULTA(hr));
     }
-    logger_.Info(L"WASAPI loopback capture started.");
+    logger_.Info(L"WASAPI 回环采集已启动。");
 
     const uint32_t bytesPerFrame = mixFormat->nBlockAlign;
     const uint32_t sampleRate = mixFormat->nSamplesPerSec;
@@ -230,7 +230,8 @@ RecorderStats LoopbackRecorder::Record(const RecorderConfig& config, const Recor
     const uint64_t ringFrames = std::max<uint64_t>(static_cast<uint64_t>(sampleRate) * ringMs.count() / 1000, 1);
     const uint64_t desiredCapacity = std::max<uint64_t>(ringFrames * bytesPerFrame, static_cast<uint64_t>(bytesPerFrame) * 2);
     const size_t ringCapacityBytes = static_cast<size_t>(std::min<uint64_t>(desiredCapacity, static_cast<uint64_t>(std::numeric_limits<size_t>::max())));
-    logger_.Info(L"Capture latency " + std::to_wstring(latency.count()) + L" ms, ring buffer " + std::to_wstring(ringMs.count()) + L" ms (" + std::to_wstring(ringCapacityBytes / 1024) + L" KiB).");
+    logger_.Info(L"采集延迟 " + std::to_wstring(latency.count()) + L" ms，环形缓冲 " +
+                 std::to_wstring(ringMs.count()) + L" ms（" + std::to_wstring(ringCapacityBytes / 1024) + L" KiB）。");
     SpscByteRingBuffer ring(ringCapacityBytes);
 
     std::atomic<bool> writerActive{true};
@@ -318,9 +319,9 @@ RecorderStats LoopbackRecorder::Record(const RecorderConfig& config, const Recor
             auto openWriterForSegment = [&](size_t segmentIndex) -> std::unique_ptr<IAudioWriter> {
                 const auto segmentPath = BuildSegmentPath(localConfig.outputPath, segmentIndex);
                 if (segmentIndex == 0) {
-                    logger_.Info(L"Opening initial segment: " + segmentPath.wstring());
+                    logger_.Info(L"打开初始分段：" + segmentPath.wstring());
                 } else {
-                    logger_.Info(L"Rolling to segment #" + std::to_wstring(segmentIndex + 1) + L": " + segmentPath.wstring());
+                    logger_.Info(L"滚动到分段 #" + std::to_wstring(segmentIndex + 1) + L"：" + segmentPath.wstring());
                 }
                 if (mp3Output) {
                     return std::make_unique<Mp3WriterAdapter>(segmentPath, *mixFormat, mp3Options, logger_);
@@ -343,9 +344,9 @@ RecorderStats LoopbackRecorder::Record(const RecorderConfig& config, const Recor
                 }
                 ++currentSegmentIndex;
                 const auto nextPath = BuildSegmentPath(localConfig.outputPath, currentSegmentIndex);
-                std::wstring reasonText = reason ? std::wstring(reason) : std::wstring(L"rolling");
-                logger_.Info(L"Starting segment #" + std::to_wstring(currentSegmentIndex + 1) +
-                             L" (" + reasonText + L"): " + nextPath.wstring());
+                std::wstring reasonText = reason ? std::wstring(reason) : std::wstring(L"滚动");
+                logger_.Info(L"开始分段 #" + std::to_wstring(currentSegmentIndex + 1) +
+                             L"（" + reasonText + L"）：" + nextPath.wstring());
                 if (mp3Output) {
                     segmentWriter = std::make_unique<Mp3WriterAdapter>(nextPath, *mixFormat, mp3Options, logger_);
                 } else {
@@ -359,7 +360,7 @@ RecorderStats LoopbackRecorder::Record(const RecorderConfig& config, const Recor
 
             while (writerActive.load(std::memory_order_acquire) || ring.AvailableToRead() > 0) {
                 if (consumeManualSegment()) {
-                    rollSegment(L"manual command");
+                    rollSegment(L"手动切段");
                 }
                 size_t bytes = ring.Read(chunk.data(), chunk.size());
                 if (bytes == 0) {
@@ -369,7 +370,7 @@ RecorderStats LoopbackRecorder::Record(const RecorderConfig& config, const Recor
                         continue;
                     }
                     if (waitRes == WAIT_FAILED) {
-                        throw std::runtime_error("Writer thread wait failed");
+                        throw std::runtime_error("写入线程等待失败");
                     }
                     continue;
                 }
@@ -387,11 +388,11 @@ RecorderStats LoopbackRecorder::Record(const RecorderConfig& config, const Recor
                 const wchar_t* reason = nullptr;
                 if (segmentFrameTarget && framesInSegment >= *segmentFrameTarget) {
                     rotate = true;
-                    reason = L"segment duration";
+                    reason = L"分段时长";
                 }
                 if (!rotate && segmentByteTarget && bytesInSegment >= *segmentByteTarget) {
                     rotate = true;
-                    reason = L"segment size";
+                    reason = L"分段大小";
                 }
                 if (rotate) {
                     rollSegment(reason);
@@ -419,7 +420,7 @@ RecorderStats LoopbackRecorder::Record(const RecorderConfig& config, const Recor
     if (pauseCallback) {
         lastPauseState = pauseCallback();
         if (lastPauseState) {
-            logger_.Info(L"Recording is paused at start; audio data will be skipped until resume.");
+            logger_.Info(L"录音开始时为暂停状态；将跳过音频数据直到恢复。");
         }
     }
     auto queryPauseState = [&]() -> bool {
@@ -429,7 +430,7 @@ RecorderStats LoopbackRecorder::Record(const RecorderConfig& config, const Recor
         bool paused = pauseCallback();
         if (paused != lastPauseState) {
             lastPauseState = paused;
-            logger_.Info(paused ? L"Recording paused." : L"Recording resumed.");
+            logger_.Info(paused ? L"录音已暂停。" : L"录音已继续。");
         }
         return paused;
     };
@@ -456,11 +457,11 @@ RecorderStats LoopbackRecorder::Record(const RecorderConfig& config, const Recor
         size_t framesInRing = bytesInRing / bytesPerFrame;
         uint64_t queueMs = framesInRing > 0 ? (framesInRing * 1000ull) / sampleRate : 0;
         uint64_t droppedSince = stats.framesDropped - lastReportedDropped;
-        std::wstring message = L"[Status] fps=" + std::to_wstring(framesPerSecond) +
-            L"/s, queue=" + std::to_wstring(queueMs) + L" ms, dropped=" + std::to_wstring(droppedSince) +
-            L", segments=" + std::to_wstring(segmentsOpened.load(std::memory_order_acquire));
+        std::wstring message = L"[状态] fps=" + std::to_wstring(framesPerSecond) +
+            L"/s, 队列=" + std::to_wstring(queueMs) + L" ms, 丢弃=" + std::to_wstring(droppedSince) +
+            L", 分段=" + std::to_wstring(segmentsOpened.load(std::memory_order_acquire));
         if (lastPauseState) {
-            message += L" (paused)";
+            message += L"（已暂停）";
         }
         logger_.Info(message);
         framesPerSecond = 0;
@@ -472,9 +473,9 @@ RecorderStats LoopbackRecorder::Record(const RecorderConfig& config, const Recor
         const std::wstring description = DescribeHRESULTW(error);
         if (error == AUDCLNT_E_DEVICE_INVALIDATED) {
             stats.deviceInvalidated = true;
-            logger_.Error(std::wstring(context) + L": playback device became unavailable (" + description + L")");
+            logger_.Error(std::wstring(context) + L"：播放设备不可用（" + description + L"）");
         } else {
-            logger_.Error(std::wstring(context) + L" failed: " + description);
+            logger_.Error(std::wstring(context) + L" 失败：" + description);
         }
         return true;
     };
@@ -498,12 +499,12 @@ RecorderStats LoopbackRecorder::Record(const RecorderConfig& config, const Recor
                 if (droppedFrames > 0) {
                     stats.framesDropped += droppedFrames;
                     if (!dropWarningIssued) {
-                        logger_.Warn(L"Writer thread is slower than capture; dropping frames to stay real-time.");
+                        logger_.Warn(L"写入线程慢于采集；为保持实时性将丢弃帧。");
                         dropWarningIssued = true;
                     }
                 }
                 if (localConfig.failOnGlitch) {
-                    logger_.Error(L"Ring buffer overrun while --fail-on-glitch is enabled; aborting capture.");
+                    logger_.Error(L"启用 --fail-on-glitch 时发生环形缓冲溢出；终止采集。");
                     return false;
                 }
                 break;
@@ -516,7 +517,7 @@ RecorderStats LoopbackRecorder::Record(const RecorderConfig& config, const Recor
 
     while (!done) {
         if (fatalError.load(std::memory_order_acquire)) {
-            logger_.Error(L"Writer thread reported a fatal error; aborting capture.");
+            logger_.Error(L"写入线程报告致命错误；终止采集。");
             break;
         }
         if (controls.shouldStop && controls.shouldStop()) {
@@ -538,14 +539,14 @@ RecorderStats LoopbackRecorder::Record(const RecorderConfig& config, const Recor
         if (wait == WAIT_TIMEOUT) {
             ++stats.watchdogTimeouts;
             if (localConfig.failOnGlitch) {
-                logger_.Error(L"Watchdog timeout reached; aborting capture.");
+                logger_.Error(L"看门狗超时；终止采集。");
                 break;
             }
-            logger_.Warn(L"Capture watchdog timeout; attempting to continue.");
+            logger_.Warn(L"采集看门狗超时；尝试继续。");
             continue;
         }
         if (wait != WAIT_OBJECT_0) {
-            logger_.Error(L"Audio event wait returned an unexpected code.");
+            logger_.Error(L"等待音频事件返回了异常代码。");
             break;
         }
 
@@ -571,12 +572,12 @@ RecorderStats LoopbackRecorder::Record(const RecorderConfig& config, const Recor
             if (flags & AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY) {
                 ++stats.glitchCount;
                 if (localConfig.failOnGlitch) {
-                    logger_.Error(L"Data discontinuity reported by audio engine; aborting capture.");
+                    logger_.Error(L"音频引擎报告数据不连续；终止采集。");
                     captureClient->ReleaseBuffer(frames);
                     done = true;
                     break;
                 }
-                logger_.Warn(L"Data discontinuity reported by audio engine.");
+                logger_.Warn(L"音频引擎报告数据不连续。");
             }
             const bool pausedNow = queryPauseState();
             if (pausedNow) {
@@ -641,31 +642,31 @@ RecorderStats LoopbackRecorder::Record(const RecorderConfig& config, const Recor
     maybeReportStatus(true);
 
     audioClient->Stop();
-    logger_.Info(L"WASAPI loopback capture stopped.");
+    logger_.Info(L"WASAPI 回环采集已停止。");
     stats.framesCaptured = framesRecorded;
     stats.segmentsWritten = segmentsOpened.load(std::memory_order_acquire);
-    logger_.Info(L"Frames captured: " + std::to_wstring(stats.framesCaptured) +
-                 L", silent frames: " + std::to_wstring(stats.silentFrames) +
-                 L", paused frames: " + std::to_wstring(stats.framesWhilePaused) +
-                 L", glitches: " + std::to_wstring(stats.glitchCount) +
-                 L", dropped: " + std::to_wstring(stats.framesDropped) +
-                 L", segments: " + std::to_wstring(stats.segmentsWritten));
+    logger_.Info(L"已采集帧数：" + std::to_wstring(stats.framesCaptured) +
+                 L"，静音帧：" + std::to_wstring(stats.silentFrames) +
+                 L"，暂停帧：" + std::to_wstring(stats.framesWhilePaused) +
+                 L"，断续：" + std::to_wstring(stats.glitchCount) +
+                 L"，丢弃：" + std::to_wstring(stats.framesDropped) +
+                 L"，分段：" + std::to_wstring(stats.segmentsWritten));
     if (stats.framesCaptured > 0 && stats.framesCaptured == stats.silentFrames) {
-        logger_.Warn(L"All captured frames were reported as silence. Verify the selected playback device is actively outputting audio (try --list-devices / --device-index).");
+        logger_.Warn(L"所有采集帧均为静音。请确认所选播放设备正在输出音频（尝试 --list-devices / --device-index）。");
     }
     if (stats.deviceInvalidated) {
-        logger_.Warn(L"Session ended because the playback device was disconnected or changed.");
+        logger_.Warn(L"会话结束：播放设备断开或已更改。");
     }
     stats.writerWaitTimeouts = writerWaitTimeouts.load();
     if (writerFailed.load()) {
-        throw std::runtime_error("Writer thread failed: " + writerErrorMessage);
+        throw std::runtime_error("写入线程失败：" + writerErrorMessage);
     }
     return stats;
 }
 
 void LoopbackRecorder::ValidateFormat(const WAVEFORMATEX* format) {
     if (!IsSupportedFormat(format)) {
-        throw std::runtime_error("Only 16-bit PCM or 32-bit float formats are supported");
+        throw std::runtime_error("仅支持 16-bit PCM 或 32-bit float 格式");
     }
 }
 

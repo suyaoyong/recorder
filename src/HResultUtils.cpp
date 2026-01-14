@@ -15,14 +15,14 @@ std::string NarrowFromWide(const std::wstring& input) {
                                          static_cast<int>(input.size()),
                                          nullptr, 0, nullptr, nullptr);
     if (sizeNeeded <= 0) {
-        throw std::runtime_error("WideCharToMultiByte failed");
+        throw std::runtime_error("WideCharToMultiByte 失败");
     }
     std::string result(sizeNeeded, '\0');
     int converted = WideCharToMultiByte(CP_UTF8, 0, input.c_str(),
                                         static_cast<int>(input.size()),
                                         result.data(), sizeNeeded, nullptr, nullptr);
     if (converted != sizeNeeded) {
-        throw std::runtime_error("WideCharToMultiByte wrote unexpected length");
+        throw std::runtime_error("WideCharToMultiByte 写入长度异常");
     }
     return result;
 }
