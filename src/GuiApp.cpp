@@ -2,6 +2,7 @@
 #include "DeviceEnumerator.h"
 #include "RecordingUtils.h"
 #include "SegmentNaming.h"
+#include "MediaFoundationPlayer.h"
 
 #include <windows.h>
 #include <commdlg.h>
@@ -28,6 +29,10 @@ constexpr UINT WM_APP_RECORDER_DONE = WM_APP + 2;
 constexpr UINT WM_APP_OUTPUT_PATH = WM_APP + 3;
 constexpr UINT WM_APP_STATE_UPDATE = WM_APP + 4;
 constexpr UINT WM_APP_DEVICE_NAME = WM_APP + 5;
+constexpr UINT WM_APP_PLAYBACK_STATE = WM_APP + 6;
+constexpr UINT WM_APP_PLAYBACK_OPENED = WM_APP + 7;
+constexpr UINT WM_APP_PLAYBACK_ENDED = WM_APP + 8;
+constexpr UINT WM_APP_PLAYBACK_ERROR = WM_APP + 9;
 
 enum ControlId : int {
     IDC_OUTPUT_EDIT = 1001,
@@ -39,6 +44,12 @@ enum ControlId : int {
     IDC_START_BUTTON,
     IDC_STOP_BUTTON,
     IDC_PAUSE_BUTTON,
+    IDC_PLAYBACK_PLAY,
+    IDC_PLAYBACK_PAUSE,
+    IDC_PLAYBACK_STOP,
+    IDC_PLAYBACK_SEEK,
+    IDC_PLAYBACK_TIME,
+    IDC_PLAYBACK_VOLUME,
     IDC_LOG_EDIT
 };
 
@@ -48,6 +59,10 @@ enum MenuId : int {
     IDM_FILE_EXIT,
     IDM_RECORD_START_STOP,
     IDM_RECORD_PAUSE,
+    IDM_PLAYBACK_TOGGLE,
+    IDM_PLAYBACK_PLAY,
+    IDM_PLAYBACK_PAUSE,
+    IDM_PLAYBACK_STOP,
     IDM_SETTINGS_FORMAT_WAV,
     IDM_SETTINGS_FORMAT_MP3,
     IDM_SETTINGS_BITRATE_128,
@@ -58,6 +73,8 @@ enum MenuId : int {
     IDM_HELP_ABOUT
 };
 
+class PlaybackListener;
+
 struct AppState {
     HWND hwnd = nullptr;
     HWND headerLabel = nullptr;
@@ -67,6 +84,12 @@ struct AppState {
     HWND startButton = nullptr;
     HWND stopButton = nullptr;
     HWND pauseButton = nullptr;
+    HWND playbackPlayButton = nullptr;
+    HWND playbackPauseButton = nullptr;
+    HWND playbackStopButton = nullptr;
+    HWND playbackSeek = nullptr;
+    HWND playbackTimeLabel = nullptr;
+    HWND playbackVolume = nullptr;
     HWND logEdit = nullptr;
     HWND statusBar = nullptr;
     HMENU mainMenu = nullptr;
@@ -92,11 +115,18 @@ struct AppState {
     enum class RecorderState { Idle, Starting, Recording, Stopping, Recovering };
     RecorderState state = RecorderState::Idle;
     std::filesystem::path currentOutputPath;
+    std::filesystem::path currentPlaybackPath;
     std::wstring currentDeviceName;
     std::chrono::steady_clock::time_point startTime{};
     std::chrono::steady_clock::time_point pauseStart{};
     std::chrono::milliseconds pausedTotal{0};
     bool paused = false;
+    MediaFoundationPlayer* player = nullptr;
+    PlaybackListener* playbackListener = nullptr;
+    PlaybackState playbackState = PlaybackState::Idle;
+    int64_t playbackDuration100ns = 0;
+    bool playbackSeeking = false;
+    float playbackVolumeValue = 0.8f;
 };
 
 class ComGuard {
@@ -112,6 +142,31 @@ public:
     }
 };
 
+class PlaybackListener : public IPlaybackListener {
+public:
+    explicit PlaybackListener(HWND hwnd) : hwnd_(hwnd) {}
+
+    void OnPlaybackStateChanged(PlaybackState state) override {
+        PostMessageW(hwnd_, WM_APP_PLAYBACK_STATE, static_cast<WPARAM>(state), 0);
+    }
+
+    void OnMediaOpened(int64_t duration100ns) override {
+        PostMessageW(hwnd_, WM_APP_PLAYBACK_OPENED, 0, static_cast<LPARAM>(duration100ns));
+    }
+
+    void OnPlaybackEnded() override {
+        PostMessageW(hwnd_, WM_APP_PLAYBACK_ENDED, 0, 0);
+    }
+
+    void OnPlaybackError(const std::wstring& message) override {
+        auto payload = new std::wstring(message);
+        PostMessageW(hwnd_, WM_APP_PLAYBACK_ERROR, 0, reinterpret_cast<LPARAM>(payload));
+    }
+
+private:
+    HWND hwnd_ = nullptr;
+};
+
 std::wstring ToWide(const std::string& text) {
     return std::wstring(text.begin(), text.end());
 }
@@ -120,6 +175,14 @@ int GetBitrateFromEdit(HWND edit, int fallback);
 void UpdateStatusDetails(AppState* state);
 void UpdateMenuForState(AppState* state);
 void UpdateOutputExtension(AppState* state);
+std::filesystem::path ResolvePlayablePath(AppState* state);
+void PlayRecording(AppState* state);
+void PausePlayback(AppState* state);
+void StopPlayback(AppState* state);
+void TogglePlayback(AppState* state);
+void UpdatePlaybackControls(AppState* state);
+void UpdatePlaybackTime(AppState* state, int64_t position100ns);
+std::wstring FormatPlaybackTime(int64_t position100ns, int64_t duration100ns);
 
 std::wstring GetWindowTextString(HWND hwnd) {
     const int length = GetWindowTextLengthW(hwnd);
@@ -266,7 +329,14 @@ void UpdateMenuForState(AppState* state) {
     if (!state || !state->mainMenu) {
         return;
     }
-    const bool canEdit = state->state == AppState::RecorderState::Idle;
+    const bool playbackActive = state->playbackState == PlaybackState::Playing ||
+        state->playbackState == PlaybackState::Opening;
+    const bool canEdit = state->state == AppState::RecorderState::Idle && !playbackActive;
+    const bool canPlayFile = canEdit && !ResolvePlayablePath(state).empty();
+    const bool canPlaybackPlay = canPlayFile && !playbackActive;
+    const bool canPlaybackPause = state->playbackState == PlaybackState::Playing;
+    const bool canPlaybackStop = state->playbackState == PlaybackState::Playing ||
+        state->playbackState == PlaybackState::Paused;
     EnableMenuItem(state->mainMenu, IDM_FILE_NEW, MF_BYCOMMAND | (canEdit ? MF_ENABLED : MF_GRAYED));
     EnableMenuItem(state->mainMenu, IDM_SETTINGS_FORMAT_WAV, MF_BYCOMMAND | (canEdit ? MF_ENABLED : MF_GRAYED));
     EnableMenuItem(state->mainMenu, IDM_SETTINGS_FORMAT_MP3, MF_BYCOMMAND | (canEdit ? MF_ENABLED : MF_GRAYED));
@@ -274,6 +344,9 @@ void UpdateMenuForState(AppState* state) {
     EnableMenuItem(state->mainMenu, IDM_SETTINGS_BITRATE_192, MF_BYCOMMAND | (canEdit ? MF_ENABLED : MF_GRAYED));
     EnableMenuItem(state->mainMenu, IDM_SETTINGS_BITRATE_256, MF_BYCOMMAND | (canEdit ? MF_ENABLED : MF_GRAYED));
     EnableMenuItem(state->mainMenu, IDM_SETTINGS_BITRATE_320, MF_BYCOMMAND | (canEdit ? MF_ENABLED : MF_GRAYED));
+    EnableMenuItem(state->mainMenu, IDM_PLAYBACK_PLAY, MF_BYCOMMAND | (canPlaybackPlay ? MF_ENABLED : MF_GRAYED));
+    EnableMenuItem(state->mainMenu, IDM_PLAYBACK_PAUSE, MF_BYCOMMAND | (canPlaybackPause ? MF_ENABLED : MF_GRAYED));
+    EnableMenuItem(state->mainMenu, IDM_PLAYBACK_STOP, MF_BYCOMMAND | (canPlaybackStop ? MF_ENABLED : MF_GRAYED));
 
     const bool mp3Selected = state->formatCombo &&
         SendMessageW(state->formatCombo, CB_GETCURSEL, 0, 0) == 1;
@@ -288,12 +361,14 @@ void UpdateMenuForState(AppState* state) {
     DrawMenuBar(state->hwnd);
 }
 void UpdateControlsForState(AppState* state) {
-    const bool canStart = state->state == AppState::RecorderState::Idle;
+    const bool playbackActive = state->playbackState == PlaybackState::Playing ||
+        state->playbackState == PlaybackState::Opening;
+    const bool canStart = state->state == AppState::RecorderState::Idle && !playbackActive;
     const bool canStop = state->state == AppState::RecorderState::Starting
         || state->state == AppState::RecorderState::Recording
         || state->state == AppState::RecorderState::Recovering
         || state->state == AppState::RecorderState::Stopping;
-    const bool canEdit = state->state == AppState::RecorderState::Idle;
+    const bool canEdit = state->state == AppState::RecorderState::Idle && !playbackActive;
     EnableWindow(state->startButton, canStart ? TRUE : FALSE);
     EnableWindow(state->stopButton, canStop ? TRUE : FALSE);
     EnableWindow(state->outputEdit, canEdit ? TRUE : FALSE);
@@ -303,6 +378,7 @@ void UpdateControlsForState(AppState* state) {
     EnableWindow(state->bitrateEdit, (canEdit && mp3Selected) ? TRUE : FALSE);
     EnableWindow(state->pauseButton, (state->state == AppState::RecorderState::Recording ||
                                       state->state == AppState::RecorderState::Recovering) ? TRUE : FALSE);
+    UpdatePlaybackControls(state);
     UpdateMenuForState(state);
 }
 
@@ -336,6 +412,7 @@ void BuildMainMenu(AppState* state) {
     HMENU menu = CreateMenu();
     HMENU fileMenu = CreatePopupMenu();
     HMENU recordMenu = CreatePopupMenu();
+    HMENU playbackMenu = CreatePopupMenu();
     HMENU settingsMenu = CreatePopupMenu();
     HMENU formatMenu = CreatePopupMenu();
     HMENU bitrateMenu = CreatePopupMenu();
@@ -349,6 +426,10 @@ void BuildMainMenu(AppState* state) {
 
     AppendMenuW(recordMenu, MF_STRING, IDM_RECORD_START_STOP, L"开始/停止\tCtrl+R");
     AppendMenuW(recordMenu, MF_STRING, IDM_RECORD_PAUSE, L"暂停/继续\tCtrl+P");
+
+    AppendMenuW(playbackMenu, MF_STRING, IDM_PLAYBACK_PLAY, L"播放\tSpace");
+    AppendMenuW(playbackMenu, MF_STRING, IDM_PLAYBACK_PAUSE, L"暂停\tCtrl+Alt+P");
+    AppendMenuW(playbackMenu, MF_STRING, IDM_PLAYBACK_STOP, L"停止\tCtrl+Space");
 
     AppendMenuW(formatMenu, MF_STRING, IDM_SETTINGS_FORMAT_WAV, L"WAV");
     AppendMenuW(formatMenu, MF_STRING, IDM_SETTINGS_FORMAT_MP3, L"MP3");
@@ -367,6 +448,7 @@ void BuildMainMenu(AppState* state) {
 
     AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(fileMenu), L"  文件  ");
     AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(recordMenu), L"  录音  ");
+    AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(playbackMenu), L"  播放  ");
     AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(settingsMenu), L"  设置  ");
     AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(viewMenu), L"  查看  ");
     AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(helpMenu), L"  帮助  ");
@@ -432,6 +514,7 @@ void BrowseForOutputPath(AppState* state) {
             ? EnsureExtension(outputPath, L".mp3")
             : EnsureExtension(outputPath, L".wav");
         SetWindowTextW(state->outputEdit, outputPath.wstring().c_str());
+        UpdateControlsForState(state);
     }
 }
 
@@ -447,6 +530,7 @@ void BrowseForOutputFolder(AppState* state) {
     }
     std::filesystem::path combined = folder / filename;
     SetWindowTextW(state->outputEdit, combined.wstring().c_str());
+    UpdateControlsForState(state);
 }
 
 void OpenOutputFolder(AppState* state) {
@@ -474,6 +558,146 @@ void OpenOutputFolder(AppState* state) {
     }
 }
 
+std::filesystem::path ResolvePlayablePath(AppState* state) {
+    if (!state) {
+        return {};
+    }
+    std::filesystem::path basePath = state->currentOutputPath;
+    if (basePath.empty()) {
+        basePath = GetWindowTextString(state->outputEdit);
+    }
+    if (basePath.empty()) {
+        basePath = DefaultOutputPath();
+    }
+    std::error_code ec;
+    if (!basePath.empty() && std::filesystem::exists(basePath, ec) && std::filesystem::is_regular_file(basePath, ec)) {
+        return basePath;
+    }
+    if (!basePath.empty()) {
+        auto firstSegment = BuildSegmentPath(basePath, 0);
+        if (std::filesystem::exists(firstSegment, ec) && std::filesystem::is_regular_file(firstSegment, ec)) {
+            return firstSegment;
+        }
+    }
+    return {};
+}
+
+void PlayRecording(AppState* state) {
+    if (!state || state->state != AppState::RecorderState::Idle) {
+        return;
+    }
+    auto playable = ResolvePlayablePath(state);
+    if (playable.empty()) {
+        AppendLog(state->logEdit, L"[界面] 未找到可播放的录音文件。");
+        return;
+    }
+    if (!state->player) {
+        AppendLog(state->logEdit, L"[界面] 播放器未初始化。");
+        return;
+    }
+    const bool shouldOpen = state->currentPlaybackPath.empty() || state->currentPlaybackPath != playable;
+    if (shouldOpen) {
+        state->currentPlaybackPath = playable;
+        if (!state->player->OpenFile(playable)) {
+            AppendLog(state->logEdit, L"[界面] 打开播放文件失败。");
+            return;
+        }
+    }
+    state->player->Play();
+    AppendLog(state->logEdit, L"[界面] 播放录音：" + playable.wstring());
+}
+
+void PausePlayback(AppState* state) {
+    if (!state || !state->player) {
+        return;
+    }
+    state->player->Pause();
+}
+
+void StopPlayback(AppState* state) {
+    if (!state || !state->player) {
+        return;
+    }
+    state->player->Stop();
+}
+
+void TogglePlayback(AppState* state) {
+    if (!state) {
+        return;
+    }
+    switch (state->playbackState) {
+    case PlaybackState::Playing:
+        PausePlayback(state);
+        break;
+    case PlaybackState::Paused:
+    case PlaybackState::Stopped:
+    case PlaybackState::Ended:
+    case PlaybackState::Idle:
+        PlayRecording(state);
+        break;
+    case PlaybackState::Opening:
+    case PlaybackState::Error:
+    default:
+        break;
+    }
+}
+
+std::wstring FormatPlaybackTime(int64_t position100ns, int64_t duration100ns) {
+    auto formatSeconds = [](int64_t seconds) {
+        if (seconds < 0) {
+            seconds = 0;
+        }
+        const int64_t hours = seconds / 3600;
+        const int64_t mins = (seconds % 3600) / 60;
+        const int64_t secs = seconds % 60;
+        wchar_t buffer[32];
+        if (hours > 0) {
+            swprintf_s(buffer, L"%02lld:%02lld:%02lld", hours, mins, secs);
+        } else {
+            swprintf_s(buffer, L"%02lld:%02lld", mins, secs);
+        }
+        return std::wstring(buffer);
+    };
+
+    const int64_t posSec = position100ns / 10000000;
+    const int64_t durSec = duration100ns / 10000000;
+    return formatSeconds(posSec) + L" / " + formatSeconds(durSec);
+}
+
+void UpdatePlaybackTime(AppState* state, int64_t position100ns) {
+    if (!state || !state->playbackSeek || !state->playbackTimeLabel) {
+        return;
+    }
+    const int seekRange = 1000;
+    if (!state->playbackSeeking && state->playbackDuration100ns > 0) {
+        const double ratio = static_cast<double>(position100ns) /
+            static_cast<double>(state->playbackDuration100ns);
+        const int pos = static_cast<int>(std::clamp(ratio, 0.0, 1.0) * seekRange);
+        SendMessageW(state->playbackSeek, TBM_SETPOS, TRUE, pos);
+    }
+    std::wstring timeText = FormatPlaybackTime(position100ns, state->playbackDuration100ns);
+    SetWindowTextW(state->playbackTimeLabel, timeText.c_str());
+}
+
+void UpdatePlaybackControls(AppState* state) {
+    if (!state) {
+        return;
+    }
+    const bool canUsePlayback = state->state == AppState::RecorderState::Idle;
+    const bool hasPlayable = !ResolvePlayablePath(state).empty();
+    const bool canPlay = canUsePlayback && hasPlayable &&
+        state->playbackState != PlaybackState::Playing &&
+        state->playbackState != PlaybackState::Opening;
+    const bool canPause = canUsePlayback && state->playbackState == PlaybackState::Playing;
+    const bool canStop = canUsePlayback && (state->playbackState == PlaybackState::Playing ||
+                                            state->playbackState == PlaybackState::Paused);
+    EnableWindow(state->playbackPlayButton, canPlay ? TRUE : FALSE);
+    EnableWindow(state->playbackPauseButton, canPause ? TRUE : FALSE);
+    EnableWindow(state->playbackStopButton, canStop ? TRUE : FALSE);
+    EnableWindow(state->playbackSeek, (canUsePlayback && state->playbackDuration100ns > 0) ? TRUE : FALSE);
+    EnableWindow(state->playbackVolume, canUsePlayback ? TRUE : FALSE);
+}
+
 void UpdateOutputExtension(AppState* state) {
     if (!state || state->state != AppState::RecorderState::Idle) {
         return;
@@ -488,8 +712,8 @@ void UpdateOutputExtension(AppState* state) {
         ? EnsureExtension(outputPath, L".mp3")
         : EnsureExtension(outputPath, L".wav");
     SetWindowTextW(state->outputEdit, outputPath.wstring().c_str());
+    UpdateControlsForState(state);
     UpdateStatusDetails(state);
-    UpdateMenuForState(state);
 }
 
 void SetFormatSelection(AppState* state, bool mp3Selected) {
@@ -820,14 +1044,71 @@ void CreateChildControls(HWND hwnd, AppState* state) {
     EnableWindow(state->pauseButton, FALSE);
 
     y += 82;
+    const int playbackGroupHeight = 110;
+    HWND playbackGroup = CreateWindowW(L"BUTTON", L"播放", WS_VISIBLE | WS_CHILD | BS_GROUPBOX,
+                                       groupLeft, y, contentWidth, playbackGroupHeight, hwnd, nullptr, nullptr, nullptr);
+    SetControlFont(playbackGroup, font);
+
+    const int playbackRowY = y + 24;
+    state->playbackPlayButton = CreateWindowW(L"BUTTON", L"播放",
+                                              WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
+                                              groupLeft + 12, playbackRowY,
+                                              buttonWidth, buttonHeight,
+                                              hwnd, reinterpret_cast<HMENU>(IDC_PLAYBACK_PLAY), nullptr, nullptr);
+    SetControlFont(state->playbackPlayButton, font);
+
+    state->playbackPauseButton = CreateWindowW(L"BUTTON", L"暂停",
+                                               WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
+                                               groupLeft + 108, playbackRowY,
+                                               buttonWidth, buttonHeight,
+                                               hwnd, reinterpret_cast<HMENU>(IDC_PLAYBACK_PAUSE), nullptr, nullptr);
+    SetControlFont(state->playbackPauseButton, font);
+
+    state->playbackStopButton = CreateWindowW(L"BUTTON", L"停止",
+                                              WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
+                                              groupLeft + 204, playbackRowY,
+                                              buttonWidth, buttonHeight,
+                                              hwnd, reinterpret_cast<HMENU>(IDC_PLAYBACK_STOP), nullptr, nullptr);
+    SetControlFont(state->playbackStopButton, font);
+
+    HWND volumeLabel = CreateWindowW(L"STATIC", L"音量：", WS_VISIBLE | WS_CHILD,
+                                     groupLeft + 320, playbackRowY + 4, 48, labelHeight,
+                                     hwnd, nullptr, nullptr, nullptr);
+    SetControlFont(volumeLabel, font);
+
+    state->playbackVolume = CreateWindowW(TRACKBAR_CLASSW, L"",
+                                          WS_VISIBLE | WS_CHILD | TBS_AUTOTICKS,
+                                          groupLeft + 370, playbackRowY,
+                                          150, buttonHeight,
+                                          hwnd, reinterpret_cast<HMENU>(IDC_PLAYBACK_VOLUME), nullptr, nullptr);
+    SendMessageW(state->playbackVolume, TBM_SETRANGE, TRUE, MAKELONG(0, 100));
+    SendMessageW(state->playbackVolume, TBM_SETPOS, TRUE, static_cast<LPARAM>(state->playbackVolumeValue * 100));
+
+    const int seekRowY = y + 64;
+    state->playbackSeek = CreateWindowW(TRACKBAR_CLASSW, L"",
+                                        WS_VISIBLE | WS_CHILD | TBS_AUTOTICKS,
+                                        groupLeft + 12, seekRowY,
+                                        contentWidth - 160, 28,
+                                        hwnd, reinterpret_cast<HMENU>(IDC_PLAYBACK_SEEK), nullptr, nullptr);
+    SendMessageW(state->playbackSeek, TBM_SETRANGE, TRUE, MAKELONG(0, 1000));
+
+    state->playbackTimeLabel = CreateWindowW(L"STATIC", L"00:00 / 00:00", WS_VISIBLE | WS_CHILD,
+                                             groupLeft + contentWidth - 140, seekRowY + 4,
+                                             128, labelHeight,
+                                             hwnd, reinterpret_cast<HMENU>(IDC_PLAYBACK_TIME), nullptr, nullptr);
+    SetControlFont(state->playbackTimeLabel, font);
+
+    y += playbackGroupHeight + 10;
+    const int logGroupHeight = 218;
+    const int logEditHeight = 170;
     HWND logGroup = CreateWindowW(L"BUTTON", L"日志", WS_VISIBLE | WS_CHILD | BS_GROUPBOX,
-                                  groupLeft, y, contentWidth, 248, hwnd, nullptr, nullptr, nullptr);
+                                  groupLeft, y, contentWidth, logGroupHeight, hwnd, nullptr, nullptr, nullptr);
     SetControlFont(logGroup, font);
 
     state->logEdit = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"",
                                      WS_VISIBLE | WS_CHILD | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY | WS_VSCROLL,
                                      groupLeft + 12, y + 26,
-                                     contentWidth - 24, 200,
+                                     contentWidth - 24, logEditHeight,
                                      hwnd, reinterpret_cast<HMENU>(IDC_LOG_EDIT), nullptr, nullptr);
     SetControlFont(state->logEdit, font);
 
@@ -857,6 +1138,11 @@ LRESULT CALLBACK MainWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
         newState->hwnd = hwnd;
         CreateChildControls(hwnd, newState.get());
         BuildMainMenu(newState.get());
+        newState->player = new MediaFoundationPlayer();
+        newState->playbackListener = new PlaybackListener(hwnd);
+        newState->player->SetListener(newState->playbackListener);
+        newState->player->Initialize();
+        newState->player->SetVolume(newState->playbackVolumeValue);
         newState->statusBar = CreateWindowExW(0, STATUSCLASSNAMEW, L"",
                                               WS_CHILD | WS_VISIBLE | SBARS_SIZEGRIP,
                                               0, 0, 0, 0, hwnd, nullptr, nullptr, nullptr);
@@ -867,6 +1153,8 @@ LRESULT CALLBACK MainWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
         UpdateStatusBarLayout(newState.get());
         UpdateStatusText(newState.get());
         SetTimer(hwnd, 1, 1000, nullptr);
+        SetTimer(hwnd, 2, 250, nullptr);
+        UpdateControlsForState(newState.get());
         SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(newState.get()));
         newState.release();
         return 0;
@@ -894,6 +1182,15 @@ LRESULT CALLBACK MainWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
         case IDC_PAUSE_BUTTON:
             TogglePause(state);
             return 0;
+        case IDC_PLAYBACK_PLAY:
+            PlayRecording(state);
+            return 0;
+        case IDC_PLAYBACK_PAUSE:
+            PausePlayback(state);
+            return 0;
+        case IDC_PLAYBACK_STOP:
+            StopPlayback(state);
+            return 0;
         case IDC_FORMAT_COMBO:
             if (HIWORD(wParam) == CBN_SELCHANGE) {
                 UpdateControlsForState(state);
@@ -904,6 +1201,11 @@ LRESULT CALLBACK MainWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             if (HIWORD(wParam) == EN_CHANGE) {
                 UpdateStatusDetails(state);
                 UpdateMenuForState(state);
+            }
+            return 0;
+        case IDC_OUTPUT_EDIT:
+            if (HIWORD(wParam) == EN_CHANGE) {
+                UpdateControlsForState(state);
             }
             return 0;
         case IDM_FILE_NEW:
@@ -929,6 +1231,18 @@ LRESULT CALLBACK MainWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             return 0;
         case IDM_RECORD_PAUSE:
             TogglePause(state);
+            return 0;
+        case IDM_PLAYBACK_PLAY:
+            PlayRecording(state);
+            return 0;
+        case IDM_PLAYBACK_PAUSE:
+            PausePlayback(state);
+            return 0;
+        case IDM_PLAYBACK_STOP:
+            StopPlayback(state);
+            return 0;
+        case IDM_PLAYBACK_TOGGLE:
+            TogglePlayback(state);
             return 0;
         case IDM_SETTINGS_FORMAT_WAV:
             if (state->state == AppState::RecorderState::Idle) {
@@ -971,6 +1285,35 @@ LRESULT CALLBACK MainWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             break;
         }
         break;
+    case WM_HSCROLL:
+        if (state) {
+            HWND target = reinterpret_cast<HWND>(lParam);
+            if (target == state->playbackSeek && state->playbackDuration100ns > 0) {
+                const int code = LOWORD(wParam);
+                const int pos = static_cast<int>(SendMessageW(state->playbackSeek, TBM_GETPOS, 0, 0));
+                const int64_t targetPos = static_cast<int64_t>(
+                    (static_cast<double>(pos) / 1000.0) * state->playbackDuration100ns);
+                if (code == TB_THUMBTRACK) {
+                    state->playbackSeeking = true;
+                    UpdatePlaybackTime(state, targetPos);
+                } else if (code == TB_ENDTRACK || code == TB_THUMBPOSITION) {
+                    state->playbackSeeking = false;
+                    if (state->player) {
+                        state->player->SeekTo(targetPos);
+                    }
+                }
+                return 0;
+            }
+            if (target == state->playbackVolume) {
+                const int pos = static_cast<int>(SendMessageW(state->playbackVolume, TBM_GETPOS, 0, 0));
+                state->playbackVolumeValue = static_cast<float>(pos) / 100.0f;
+                if (state->player) {
+                    state->player->SetVolume(state->playbackVolumeValue);
+                }
+                return 0;
+            }
+        }
+        break;
     case WM_APP_LOG_MESSAGE:
         if (state) {
             auto payload = reinterpret_cast<std::wstring*>(lParam);
@@ -996,6 +1339,7 @@ LRESULT CALLBACK MainWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 delete payload;
             }
         }
+        UpdateControlsForState(state);
         UpdateStatusText(state);
         return 0;
     case WM_APP_DEVICE_NAME:
@@ -1007,6 +1351,38 @@ LRESULT CALLBACK MainWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             }
         }
         UpdateStatusDetails(state);
+        return 0;
+    case WM_APP_PLAYBACK_STATE:
+        if (state) {
+            state->playbackState = static_cast<PlaybackState>(wParam);
+            if (state->playbackState == PlaybackState::Stopped ||
+                state->playbackState == PlaybackState::Ended) {
+                UpdatePlaybackTime(state, 0);
+            }
+            UpdateControlsForState(state);
+        }
+        return 0;
+    case WM_APP_PLAYBACK_OPENED:
+        if (state) {
+            state->playbackDuration100ns = static_cast<int64_t>(lParam);
+            UpdatePlaybackTime(state, 0);
+            UpdateControlsForState(state);
+        }
+        return 0;
+    case WM_APP_PLAYBACK_ENDED:
+        if (state) {
+            UpdatePlaybackControls(state);
+        }
+        return 0;
+    case WM_APP_PLAYBACK_ERROR:
+        if (state) {
+            auto payload = reinterpret_cast<std::wstring*>(lParam);
+            if (payload) {
+                AppendLog(state->logEdit, L"[播放] " + *payload);
+                delete payload;
+            }
+            UpdateControlsForState(state);
+        }
         return 0;
     case WM_CTLCOLORSTATIC:
         if (state) {
@@ -1058,7 +1434,16 @@ LRESULT CALLBACK MainWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
         break;
     case WM_TIMER:
         if (state) {
-            UpdateStatusText(state);
+            if (wParam == 1) {
+                UpdateStatusText(state);
+            } else if (wParam == 2 && state->player) {
+                const bool shouldUpdate = state->playbackState == PlaybackState::Playing ||
+                    state->playbackState == PlaybackState::Paused;
+                if (shouldUpdate) {
+                    const int64_t position = state->player->GetPosition100ns();
+                    UpdatePlaybackTime(state, position);
+                }
+            }
         }
         return 0;
     case WM_APP_RECORDER_DONE:
@@ -1069,6 +1454,15 @@ LRESULT CALLBACK MainWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
     case WM_DESTROY:
         if (state) {
             state->stopRequested.store(true);
+            if (state->player) {
+                state->player->Shutdown();
+                delete state->player;
+                state->player = nullptr;
+            }
+            if (state->playbackListener) {
+                delete state->playbackListener;
+                state->playbackListener = nullptr;
+            }
             if (state->worker.joinable()) {
                 state->worker.join();
             }
@@ -1120,6 +1514,7 @@ LRESULT CALLBACK MainWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
         }
         KillTimer(hwnd, 1);
+        KillTimer(hwnd, 2);
         PostQuitMessage(0);
         return 0;
     default:
@@ -1147,7 +1542,7 @@ int APIENTRY wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int nCmdShow) {
 
     HWND hwnd = CreateWindowExW(0, kClassName, L"系统录音工具",
                                 WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
-                                CW_USEDEFAULT, CW_USEDEFAULT, 640, 620,
+                                CW_USEDEFAULT, CW_USEDEFAULT, 640, 700,
                                 nullptr, nullptr, hInstance, nullptr);
     if (!hwnd) {
         return 0;
@@ -1159,6 +1554,9 @@ int APIENTRY wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int nCmdShow) {
         { FCONTROL | FVIRTKEY, 'N', IDM_FILE_NEW },
         { FCONTROL | FVIRTKEY, 'R', IDM_RECORD_START_STOP },
         { FCONTROL | FVIRTKEY, 'P', IDM_RECORD_PAUSE },
+        { FVIRTKEY, VK_SPACE, IDM_PLAYBACK_TOGGLE },
+        { FCONTROL | FALT | FVIRTKEY, 'P', IDM_PLAYBACK_PAUSE },
+        { FCONTROL | FVIRTKEY, VK_SPACE, IDM_PLAYBACK_STOP },
         { FCONTROL | FVIRTKEY, 'L', IDM_VIEW_CLEAR_LOG },
         { FVIRTKEY, VK_F1, IDM_HELP_ABOUT }
     };

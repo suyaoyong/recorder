@@ -30,6 +30,7 @@ target_link_libraries(loopback_recorder PRIVATE
 
 add_executable(loopback_recorder_gui
     src/GuiApp.cpp
+    src/MediaFoundationPlayer.cpp
     src/WavWriter.cpp
     src/LoopbackRecorder.cpp
     src/DeviceEnumerator.cpp
@@ -53,6 +54,10 @@ target_link_libraries(loopback_recorder_gui PRIVATE
     comdlg32
     comctl32
     shell32
+    mfplat
+    mf
+    mfreadwrite
+    mfuuid
 )
 
 set_target_properties(loopback_recorder_gui PROPERTIES WIN32_EXECUTABLE YES)
