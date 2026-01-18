@@ -30,6 +30,7 @@ target_link_libraries(loopback_recorder PRIVATE
 
 add_executable(loopback_recorder_gui
     src/GuiApp.cpp
+    src/GuiApp.rc
     src/MediaFoundationPlayer.cpp
     src/WavWriter.cpp
     src/LoopbackRecorder.cpp
@@ -54,6 +55,7 @@ target_link_libraries(loopback_recorder_gui PRIVATE
     comdlg32
     comctl32
     shell32
+    gdiplus
     mfplat
     mf
     mfreadwrite

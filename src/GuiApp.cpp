@@ -10,17 +10,23 @@
 #include <shellapi.h>
 #include <shlobj.h>
 #include <commctrl.h>
+#include <gdiplus.h>
+#include <objidl.h>
 
 #include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cwchar>
+#include <cstring>
 #include <filesystem>
 #include <iomanip>
 #include <memory>
 #include <sstream>
 #include <string>
 #include <thread>
+#include <vector>
+
+#include "resource.h"
 
 namespace {
 
@@ -80,6 +86,11 @@ struct RecordingStatusParts {
     std::wstring time;
     std::wstring size;
     std::wstring format;
+};
+
+struct AboutDialogState {
+    HWND parent = nullptr;
+    HBITMAP qrBitmap = nullptr;
 };
 
 struct AppState {
@@ -221,6 +232,7 @@ void UpdatePlaybackTime(AppState* state, int64_t position100ns);
 std::wstring FormatPlaybackTime(int64_t position100ns, int64_t duration100ns);
 std::wstring BuildRecordingSummary(AppState* state);
 RecordingStatusParts BuildRecordingStatusParts(AppState* state);
+LRESULT CALLBACK AboutWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 std::wstring GetWindowTextString(HWND hwnd) {
     const int length = GetWindowTextLengthW(hwnd);
@@ -258,6 +270,22 @@ std::wstring FormatBytes(uintmax_t bytes) {
         ss << bytes << L" B";
     }
     return ss.str();
+}
+
+COLORREF AdjustColor(COLORREF color, int delta) {
+    auto clamp = [](int value) {
+        if (value < 0) {
+            return 0;
+        }
+        if (value > 255) {
+            return 255;
+        }
+        return value;
+    };
+    const int r = clamp(static_cast<int>(GetRValue(color)) + delta);
+    const int g = clamp(static_cast<int>(GetGValue(color)) + delta);
+    const int b = clamp(static_cast<int>(GetBValue(color)) + delta);
+    return RGB(r, g, b);
 }
 
 void UpdateStatusText(AppState* state) {
@@ -496,6 +524,127 @@ std::filesystem::path GetDefaultOutputFolder() {
         }
     }
     return {};
+}
+
+std::filesystem::path GetExecutableDirectory() {
+    wchar_t modulePath[MAX_PATH] = {};
+    DWORD len = GetModuleFileNameW(nullptr, modulePath, MAX_PATH);
+    if (len == 0) {
+        return {};
+    }
+    std::filesystem::path exePath(modulePath);
+    if (exePath.has_parent_path()) {
+        return exePath.parent_path();
+    }
+    return {};
+}
+
+std::filesystem::path FindQrImagePath() {
+    std::vector<std::filesystem::path> candidates;
+    const std::filesystem::path exeDir = GetExecutableDirectory();
+    if (!exeDir.empty()) {
+        candidates.push_back(exeDir / L"wechat_qr.png");
+        candidates.push_back(exeDir / L"wechat_qr.bmp");
+        candidates.push_back(exeDir / L"assets" / L"wechat_qr.png");
+        candidates.push_back(exeDir / L"assets" / L"wechat_qr.bmp");
+        candidates.push_back(exeDir / L".." / L"assets" / L"wechat_qr.png");
+        candidates.push_back(exeDir / L".." / L"assets" / L"wechat_qr.bmp");
+        candidates.push_back(exeDir / L".." / L".." / L"assets" / L"wechat_qr.png");
+        candidates.push_back(exeDir / L".." / L".." / L"assets" / L"wechat_qr.bmp");
+    }
+    std::error_code ec;
+    auto cwd = std::filesystem::current_path(ec);
+    if (!ec && !cwd.empty()) {
+        candidates.push_back(cwd / L"wechat_qr.png");
+        candidates.push_back(cwd / L"wechat_qr.bmp");
+        candidates.push_back(cwd / L"assets" / L"wechat_qr.png");
+        candidates.push_back(cwd / L"assets" / L"wechat_qr.bmp");
+    }
+    for (const auto& candidate : candidates) {
+        if (std::filesystem::exists(candidate)) {
+            return candidate;
+        }
+    }
+    return {};
+}
+
+HBITMAP LoadQrBitmapFromResource(HINSTANCE instance) {
+    HRSRC resource = FindResourceW(instance, MAKEINTRESOURCEW(IDR_QR_PNG), MAKEINTRESOURCEW(10));
+    if (!resource) {
+        return nullptr;
+    }
+    HGLOBAL resourceData = LoadResource(instance, resource);
+    if (!resourceData) {
+        return nullptr;
+    }
+    DWORD resourceSize = SizeofResource(instance, resource);
+    if (resourceSize == 0) {
+        return nullptr;
+    }
+    const void* data = LockResource(resourceData);
+    if (!data) {
+        return nullptr;
+    }
+    HGLOBAL buffer = GlobalAlloc(GMEM_MOVEABLE, resourceSize);
+    if (!buffer) {
+        return nullptr;
+    }
+    void* dest = GlobalLock(buffer);
+    if (!dest) {
+        GlobalFree(buffer);
+        return nullptr;
+    }
+    std::memcpy(dest, data, resourceSize);
+    GlobalUnlock(buffer);
+
+    IStream* stream = nullptr;
+    if (CreateStreamOnHGlobal(buffer, TRUE, &stream) != S_OK) {
+        GlobalFree(buffer);
+        return nullptr;
+    }
+
+    std::unique_ptr<Gdiplus::Bitmap> bitmap(Gdiplus::Bitmap::FromStream(stream));
+    stream->Release();
+    if (!bitmap || bitmap->GetLastStatus() != Gdiplus::Ok) {
+        return nullptr;
+    }
+    HBITMAP hbitmap = nullptr;
+    bitmap->GetHBITMAP(Gdiplus::Color(0xFF, 0xFF, 0xFF, 0xFF), &hbitmap);
+    return hbitmap;
+}
+
+HBITMAP LoadQrBitmap() {
+    HBITMAP resourceBitmap = LoadQrBitmapFromResource(GetModuleHandleW(nullptr));
+    if (resourceBitmap) {
+        return resourceBitmap;
+    }
+    const std::filesystem::path path = FindQrImagePath();
+    if (path.empty()) {
+        return nullptr;
+    }
+    Gdiplus::Bitmap bitmap(path.c_str());
+    if (bitmap.GetLastStatus() != Gdiplus::Ok) {
+        return nullptr;
+    }
+    HBITMAP hbitmap = nullptr;
+    bitmap.GetHBITMAP(Gdiplus::Color(0xFF, 0xFF, 0xFF, 0xFF), &hbitmap);
+    return hbitmap;
+}
+
+bool IsMp3DllAvailable() {
+    wchar_t envPath[MAX_PATH] = {};
+    const DWORD envLen = GetEnvironmentVariableW(L"LAME_DLL_PATH", envPath, MAX_PATH);
+    if (envLen > 0 && envLen < MAX_PATH) {
+        if (std::filesystem::exists(envPath)) {
+            return true;
+        }
+    }
+    const std::filesystem::path exeDir = GetExecutableDirectory();
+    if (exeDir.empty()) {
+        return false;
+    }
+    return std::filesystem::exists(exeDir / L"libmp3lame.dll") ||
+        std::filesystem::exists(exeDir / L"lame_enc.dll");
 }
 
 void BrowseForOutputPath(AppState* state) {
@@ -940,8 +1089,17 @@ void StartRecording(AppState* state) {
         SetWindowTextW(state->outputEdit, pathText.c_str());
     }
     std::filesystem::path outputPath = pathText;
-    const bool mp3Enabled = state->formatCombo &&
+    bool mp3Enabled = state->formatCombo &&
         SendMessageW(state->formatCombo, CB_GETCURSEL, 0, 0) == 1;
+    if (mp3Enabled && !IsMp3DllAvailable()) {
+        MessageBoxW(state->hwnd,
+                    L"未检测到 libmp3lame.dll（或 lame_enc.dll），只能保存为 WAV 文件。\n"
+                    L"请将 DLL 放到程序同目录，或设置环境变量 LAME_DLL_PATH。",
+                    L"缺少 MP3 编码库", MB_OK | MB_ICONWARNING);
+        AppendLog(state->logEdit, L"[界面] 未检测到 MP3 编码库，已切换为 WAV 输出。");
+        SetFormatSelection(state, false);
+        mp3Enabled = false;
+    }
     const int bitrate = GetBitrateFromEdit(state->bitrateEdit, state->defaultBitrate);
     outputPath = mp3Enabled
         ? EnsureExtension(outputPath, L".mp3")
@@ -1019,7 +1177,8 @@ void CreateChildControls(HWND hwnd, AppState* state) {
     const int labelHeight = 16;
     const int editHeight = 26;
     const int buttonHeight = 30;
-    const int startButtonSize = 88;
+    const int actionButtonWidth = 96;
+    const int actionButtonHeight = buttonHeight;
     RECT client{};
     GetClientRect(hwnd, &client);
     int windowWidth = static_cast<int>(client.right - client.left);
@@ -1075,27 +1234,25 @@ void CreateChildControls(HWND hwnd, AppState* state) {
     SetControlFont(state->statusMetaLabel, state->uiFontSecondary);
 
     y += statusGroupHeight + 10;
-    const int actionGroupHeight = 150;
+    const int actionGroupHeight = 92;
     state->actionGroup = CreateWindowW(L"BUTTON", L"主要操作", WS_VISIBLE | WS_CHILD | BS_GROUPBOX,
                                      groupLeft, y, contentWidth, actionGroupHeight, hwnd, nullptr, nullptr, nullptr);
     SetControlFont(state->actionGroup, state->uiFontSecondary);
 
-    const int startX = groupLeft + (contentWidth - startButtonSize) / 2;
+    const int actionRowY = y + 32;
+    const int actionSpacing = 12;
+    const int actionRowWidth = actionButtonWidth * 2 + actionSpacing;
+    const int actionX = groupLeft + (contentWidth - actionRowWidth) / 2;
     state->startButton = CreateWindowW(L"BUTTON", L"开始录音",
                                        WS_VISIBLE | WS_CHILD | BS_OWNERDRAW,
-                                       startX, y + 24, startButtonSize, startButtonSize,
+                                       actionX, actionRowY, actionButtonWidth, actionButtonHeight,
                                        hwnd, reinterpret_cast<HMENU>(IDC_START_BUTTON), nullptr, nullptr);
     SetControlFont(state->startButton, state->uiFontBold);
 
-    const int secondaryRowY = y + 24 + startButtonSize + 8;
-    const int secondarySpacing = 12;
-    const int secondaryButtonWidth = 84;
-    const int secondaryRowWidth = secondaryButtonWidth + secondarySpacing + secondaryButtonWidth;
-    const int secondaryX = groupLeft + (contentWidth - secondaryRowWidth) / 2;
     state->pauseButton = CreateWindowW(L"BUTTON", L"暂停录音",
                                        WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
-                                       secondaryX, secondaryRowY,
-                                       secondaryButtonWidth, buttonHeight,
+                                       actionX + actionButtonWidth + actionSpacing, actionRowY,
+                                       actionButtonWidth, actionButtonHeight,
                                        hwnd, reinterpret_cast<HMENU>(IDC_PAUSE_BUTTON), nullptr, nullptr);
     SetControlFont(state->pauseButton, font);
     EnableWindow(state->pauseButton, FALSE);
@@ -1244,6 +1401,47 @@ void CreateChildControls(HWND hwnd, AppState* state) {
         state->openIcon = sfi.hIcon;
         AttachButtonIcon(state->openFolderButton, state->openIcon, state->openImageList);
     }
+}
+
+void ShowAboutDialog(HWND parent) {
+    static const wchar_t kAboutClassName[] = L"LoopbackRecorderAbout";
+    static std::atomic<bool> registered{false};
+    if (!registered.exchange(true)) {
+        WNDCLASSW wc{};
+        wc.lpfnWndProc = AboutWindowProc;
+        wc.hInstance = GetModuleHandleW(nullptr);
+        wc.hCursor = LoadCursorW(nullptr, reinterpret_cast<LPWSTR>(IDC_ARROW));
+        wc.hIcon = LoadIconW(nullptr, reinterpret_cast<LPWSTR>(IDI_APPLICATION));
+        wc.lpszClassName = kAboutClassName;
+        RegisterClassW(&wc);
+    }
+
+    AboutDialogState* aboutState = new AboutDialogState{};
+    aboutState->parent = parent;
+
+    const int width = 600;
+    const int height = 420;
+    RECT rect{ 0, 0, width, height };
+    AdjustWindowRectEx(&rect, WS_CAPTION | WS_SYSMENU, FALSE, WS_EX_DLGMODALFRAME);
+    const int windowWidth = rect.right - rect.left;
+    const int windowHeight = rect.bottom - rect.top;
+
+    RECT parentRect{};
+    GetWindowRect(parent, &parentRect);
+    const int x = parentRect.left + ((parentRect.right - parentRect.left) - windowWidth) / 2;
+    const int y = parentRect.top + ((parentRect.bottom - parentRect.top) - windowHeight) / 2;
+
+    HWND aboutWindow = CreateWindowExW(WS_EX_DLGMODALFRAME, kAboutClassName, L"关于",
+                                       WS_CAPTION | WS_SYSMENU | WS_POPUP,
+                                       x, y, windowWidth, windowHeight,
+                                       parent, nullptr, GetModuleHandleW(nullptr), aboutState);
+    if (!aboutWindow) {
+        delete aboutState;
+        return;
+    }
+    EnableWindow(parent, FALSE);
+    ShowWindow(aboutWindow, SW_SHOW);
+    UpdateWindow(aboutWindow);
 }
 
 LRESULT CALLBACK MainWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -1400,8 +1598,7 @@ LRESULT CALLBACK MainWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             ClearLog(state);
             return 0;
         case IDM_HELP_ABOUT:
-            MessageBoxW(hwnd, L"Loopback Recorder GUI\\n版本：Debug 构建\\n\\n支持 WASAPI 回环录音。",
-                        L"关于", MB_OK | MB_ICONINFORMATION);
+            ShowAboutDialog(hwnd);
             return 0;
         default:
             break;
@@ -1514,13 +1711,16 @@ LRESULT CALLBACK MainWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             }
             const bool disabled = (dis->itemState & ODS_DISABLED) != 0;
             const bool pressed = (dis->itemState & ODS_SELECTED) != 0;
-            COLORREF fill = state->panelColor;
+            COLORREF fill = state->recordColor;
             if (state->state == AppState::RecorderState::Recording ||
                 state->state == AppState::RecorderState::Recovering) {
-                fill = state->paused ? state->pauseColor : state->recordColor;
+                fill = state->paused ? state->pauseColor : state->primaryColor;
             }
             if (disabled) {
                 fill = RGB(0x2A, 0x30, 0x36);
+            }
+            if (pressed && !disabled) {
+                fill = AdjustColor(fill, -24);
             }
             HBRUSH fillBrush = CreateSolidBrush(fill);
             FillRect(dis->hDC, &dis->rcItem, fillBrush);
@@ -1535,7 +1735,9 @@ LRESULT CALLBACK MainWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             }
 
             SetBkMode(dis->hDC, TRANSPARENT);
-            SetTextColor(dis->hDC, state->textPrimary);
+            const bool useLightText = !disabled &&
+                (fill == state->recordColor || fill == state->primaryColor || fill == state->pauseColor);
+            SetTextColor(dis->hDC, useLightText ? RGB(0xFF, 0xFF, 0xFF) : state->textPrimary);
             HFONT oldFont = reinterpret_cast<HFONT>(SelectObject(dis->hDC, state->uiFontBold));
             std::wstring label = GetWindowTextString(state->startButton);
             DrawTextW(dis->hDC, label.c_str(), static_cast<int>(label.size()),
@@ -1745,6 +1947,106 @@ LRESULT CALLBACK MainWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
     return DefWindowProcW(hwnd, msg, wParam, lParam);
 }
 
+LRESULT CALLBACK AboutWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    AboutDialogState* aboutState = reinterpret_cast<AboutDialogState*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
+    switch (msg) {
+    case WM_CREATE: {
+        auto* create = reinterpret_cast<LPCREATESTRUCTW>(lParam);
+        aboutState = reinterpret_cast<AboutDialogState*>(create->lpCreateParams);
+        SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(aboutState));
+
+        const int padding = 16;
+        const int qrSize = 150;
+        const int width = 600;
+        const int height = 420;
+        const int textWidth = 320;
+        const int qrX = padding + textWidth + 8;
+
+        std::wstring aboutText =
+            L"系统录音工具（Loopback Recorder GUI）\r\n"
+            L"  版本：v0.1.0\r\n"
+            L"  作用：基于 WASAPI Loopback 录制系统正在播放的音频，支持 WAV/MP3 输出、暂停/继续与回放检查。\r\n"
+            L"  作者：suspark\r\n"
+            L"\r\n"
+            L"交流与更新：\r\n"
+            L"  微信公众号（问题反馈）：边跑步边读书\r\n"
+            L"\r\n"
+            L"隐私与安全：\r\n"
+            L"  无驱动、无后台、不采集隐私数据；录音文件仅保存在本地。\r\n"
+            L"\r\n"
+            L"MP3 编码库：\r\n"
+            L"  libmp3lame.dll（或 lame_enc.dll）请与程序同目录。\r\n"
+            L"\r\n"
+            L"项目主页：\r\n"
+            L"  https://github.com/suyaoyong/recorder\r\n"
+            L"\r\n"
+            L"免责声明：\r\n"
+            L"  本工具仅用于用户授权的音频录制，请遵守当地法律法规。";
+        HWND text = CreateWindowW(L"STATIC", aboutText.c_str(),
+                                  WS_CHILD | WS_VISIBLE | SS_LEFT | SS_NOPREFIX,
+                                  padding, padding, textWidth, height - padding * 3 - 36,
+                                  hwnd, nullptr, nullptr, nullptr);
+
+        HFONT font = reinterpret_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
+        if (text && font) {
+            SendMessageW(text, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
+        }
+
+        aboutState->qrBitmap = LoadQrBitmap();
+        if (aboutState->qrBitmap) {
+            HWND qr = CreateWindowW(L"STATIC", nullptr,
+                                    WS_CHILD | WS_VISIBLE | SS_BITMAP,
+                                    qrX, padding + 10,
+                                    qrSize, qrSize, hwnd, nullptr, nullptr, nullptr);
+            SendMessageW(qr, STM_SETIMAGE, IMAGE_BITMAP, reinterpret_cast<LPARAM>(aboutState->qrBitmap));
+        } else {
+            std::wstring placeholder = L"二维码未找到\r\n请放置 wechat_qr.png\r\n到 assets 目录";
+            HWND qrText = CreateWindowW(L"STATIC", placeholder.c_str(),
+                                        WS_CHILD | WS_VISIBLE | SS_LEFT | SS_NOPREFIX,
+                                        qrX, padding + 10,
+                                        qrSize, qrSize, hwnd, nullptr, nullptr, nullptr);
+            if (qrText && font) {
+                SendMessageW(qrText, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
+            }
+        }
+
+        HWND okButton = CreateWindowW(L"BUTTON", L"确定",
+                                      WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON,
+                                      (width - 88) / 2, height - padding - 30,
+                                      88, 30, hwnd, reinterpret_cast<HMENU>(IDOK), nullptr, nullptr);
+        if (okButton && font) {
+            SendMessageW(okButton, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
+        }
+        return 0;
+    }
+    case WM_COMMAND:
+        if (LOWORD(wParam) == IDOK || LOWORD(wParam) == IDCANCEL) {
+            DestroyWindow(hwnd);
+            return 0;
+        }
+        break;
+    case WM_CLOSE:
+        DestroyWindow(hwnd);
+        return 0;
+    case WM_DESTROY:
+        if (aboutState) {
+            if (aboutState->qrBitmap) {
+                DeleteObject(aboutState->qrBitmap);
+                aboutState->qrBitmap = nullptr;
+            }
+            if (aboutState->parent) {
+                EnableWindow(aboutState->parent, TRUE);
+                SetForegroundWindow(aboutState->parent);
+            }
+            delete aboutState;
+        }
+        return 0;
+    default:
+        break;
+    }
+    return DefWindowProcW(hwnd, msg, wParam, lParam);
+}
+
 } // namespace
 
 int APIENTRY wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int nCmdShow) {
@@ -1753,6 +2055,12 @@ int APIENTRY wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int nCmdShow) {
     icc.dwSize = sizeof(icc);
     icc.dwICC = ICC_BAR_CLASSES;
     InitCommonControlsEx(&icc);
+
+    Gdiplus::GdiplusStartupInput gdiplusInput{};
+    ULONG_PTR gdiplusToken = 0;
+    if (Gdiplus::GdiplusStartup(&gdiplusToken, &gdiplusInput, nullptr) != Gdiplus::Ok) {
+        gdiplusToken = 0;
+    }
 
     WNDCLASSW wc{};
     wc.lpfnWndProc = MainWindowProc;
@@ -1764,7 +2072,7 @@ int APIENTRY wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int nCmdShow) {
 
     HWND hwnd = CreateWindowExW(0, kClassName, L"系统录音工具",
                                 WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
-                                CW_USEDEFAULT, CW_USEDEFAULT, 900, 560,
+                                CW_USEDEFAULT, CW_USEDEFAULT, 860, 540,
                                 nullptr, nullptr, hInstance, nullptr);
     if (!hwnd) {
         return 0;
@@ -1793,6 +2101,9 @@ int APIENTRY wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int nCmdShow) {
     }
     if (accelTable) {
         DestroyAcceleratorTable(accelTable);
+    }
+    if (gdiplusToken != 0) {
+        Gdiplus::GdiplusShutdown(gdiplusToken);
     }
     return static_cast<int>(msg.wParam);
 }

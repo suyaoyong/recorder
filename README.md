@@ -85,6 +85,11 @@ loopback_recorder --seconds 120 --out C:/captures/meeting.mp3 --mp3-bitrate 192
 - GUI 仅作为壳层，CLI 可继续独立使用；后续新功能可以先在 CLI 完成，再在 GUI 中补齐控件。
 - GUI 支持菜单栏与快捷键：`Ctrl+N` 新建录音、`Ctrl+R` 开始/停止、`Ctrl+P` 暂停/继续、`Ctrl+L` 清空日志、`F1` 关于。
 
+### 交流与更新
+微信公众号（问题反馈）：边跑步边读书  
+
+![微信公众号二维码](assets/wechat_qr.png)
+
 ## 实时控制与分段
 - **停止**：直接按 Enter （输入空行）即可停止录音，并结束当前文件。
 - **暂停/恢复**：输入 `P` + Enter 可在录音与暂停间切换，暂停期间接收到的音频会被丢弃，统计中会上报 `paused frames`。

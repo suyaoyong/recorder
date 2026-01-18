@@ -1,0 +1,3 @@
+#include "resource.h"
+
+IDR_QR_PNG RCDATA "../assets/wechat_qr.png"
