@@ -75,12 +75,30 @@ enum MenuId : int {
 
 class PlaybackListener;
 
+struct RecordingStatusParts {
+    std::wstring status;
+    std::wstring time;
+    std::wstring size;
+    std::wstring format;
+};
+
 struct AppState {
     HWND hwnd = nullptr;
     HWND headerLabel = nullptr;
+    HWND statusGroup = nullptr;
+    HWND actionGroup = nullptr;
+    HWND statusStateLabel = nullptr;
+    HWND statusTimeLabel = nullptr;
+    HWND statusMetaLabel = nullptr;
     HWND outputEdit = nullptr;
+    HWND outputLabel = nullptr;
+    HWND browseButton = nullptr;
+    HWND browseFolderButton = nullptr;
+    HWND openFolderButton = nullptr;
     HWND formatCombo = nullptr;
+    HWND formatLabel = nullptr;
     HWND bitrateEdit = nullptr;
+    HWND bitrateLabel = nullptr;
     HWND startButton = nullptr;
     HWND stopButton = nullptr;
     HWND pauseButton = nullptr;
@@ -90,18 +108,36 @@ struct AppState {
     HWND playbackSeek = nullptr;
     HWND playbackTimeLabel = nullptr;
     HWND playbackVolume = nullptr;
+    HWND playbackGroup = nullptr;
+    HWND playbackVolumeLabel = nullptr;
     HWND logEdit = nullptr;
+    HWND logGroup = nullptr;
     HWND statusBar = nullptr;
+    HWND settingsGroup = nullptr;
     HMENU mainMenu = nullptr;
     HMENU settingsMenu = nullptr;
     HMENU bitrateMenu = nullptr;
     HFONT uiFont = nullptr;
     HFONT uiFontBold = nullptr;
     HFONT uiFontTitle = nullptr;
+    HFONT uiFontSecondary = nullptr;
+    HFONT uiFontTimer = nullptr;
     HBRUSH backgroundBrush = nullptr;
     HBRUSH headerBrush = nullptr;
-    COLORREF backgroundColor = RGB(245, 247, 250);
-    COLORREF headerColor = RGB(232, 240, 254);
+    HBRUSH panelBrush = nullptr;
+    HBRUSH panelAltBrush = nullptr;
+    COLORREF backgroundColor = RGB(0xEF, 0xF4, 0xF8);
+    COLORREF headerColor = RGB(0xFF, 0xFF, 0xFF);
+    COLORREF panelColor = RGB(0xFF, 0xFF, 0xFF);
+    COLORREF panelAltColor = RGB(0xF6, 0xFA, 0xFD);
+    COLORREF textPrimary = RGB(0x1F, 0x2A, 0x37);
+    COLORREF textSecondary = RGB(0x5B, 0x6B, 0x7A);
+    COLORREF textTertiary = RGB(0x8B, 0x99, 0xA8);
+    COLORREF primaryColor = RGB(0x2D, 0x9C, 0xDB);
+    COLORREF accentColor = RGB(0xF2, 0x99, 0x4A);
+    COLORREF recordColor = RGB(0xEB, 0x57, 0x57);
+    COLORREF pauseColor = RGB(0xF2, 0xC9, 0x4C);
+    COLORREF borderColor = RGB(0xD7, 0xE3, 0xEE);
     HICON fileIcon = nullptr;
     HICON folderIcon = nullptr;
     HICON openIcon = nullptr;
@@ -183,6 +219,8 @@ void TogglePlayback(AppState* state);
 void UpdatePlaybackControls(AppState* state);
 void UpdatePlaybackTime(AppState* state, int64_t position100ns);
 std::wstring FormatPlaybackTime(int64_t position100ns, int64_t duration100ns);
+std::wstring BuildRecordingSummary(AppState* state);
+RecordingStatusParts BuildRecordingStatusParts(AppState* state);
 
 std::wstring GetWindowTextString(HWND hwnd) {
     const int length = GetWindowTextLengthW(hwnd);
@@ -223,61 +261,24 @@ std::wstring FormatBytes(uintmax_t bytes) {
 }
 
 void UpdateStatusText(AppState* state) {
-    if (!state || !state->statusBar) {
+    if (!state) {
         return;
     }
-    std::wstring text = L"状态：";
-    switch (state->state) {
-    case AppState::RecorderState::Idle:
-        text += L"空闲";
-        break;
-    case AppState::RecorderState::Starting:
-        text += L"启动中...";
-        break;
-    case AppState::RecorderState::Recovering:
-        text += L"重连中...";
-        break;
-    case AppState::RecorderState::Stopping:
-        text += L"停止中...";
-        break;
-    case AppState::RecorderState::Recording: {
-        auto now = std::chrono::steady_clock::now();
-        auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - state->startTime - state->pausedTotal);
-        if (state->paused) {
-            elapsed -= std::chrono::duration_cast<std::chrono::seconds>(now - state->pauseStart);
-        }
-        if (elapsed.count() < 0) {
-            elapsed = std::chrono::seconds(0);
-        }
-        const int hours = static_cast<int>(elapsed.count() / 3600);
-        const int mins = static_cast<int>((elapsed.count() % 3600) / 60);
-        const int secs = static_cast<int>(elapsed.count() % 60);
-        wchar_t timeBuf[32];
-        swprintf_s(timeBuf, L"%02d:%02d:%02d", hours, mins, secs);
-        text += L"录音中 ";
-        text += timeBuf;
-        if (state->paused) {
-            text += L"（已暂停）";
-        }
-        std::filesystem::path sizePath = state->currentOutputPath;
-        if (!sizePath.empty()) {
-            sizePath = BuildSegmentPath(sizePath, 0);
-        }
-        uintmax_t bytes = 0;
-        std::error_code ec;
-        if (!sizePath.empty() && std::filesystem::exists(sizePath, ec)) {
-            bytes = std::filesystem::file_size(sizePath, ec);
-        }
-        text += L" | ";
-        text += FormatBytes(bytes);
-        break;
+    RecordingStatusParts parts = BuildRecordingStatusParts(state);
+    if (state->statusStateLabel) {
+        SetWindowTextW(state->statusStateLabel, parts.status.c_str());
     }
-    default:
-        text += L"未知";
-        break;
+    if (state->statusTimeLabel) {
+        SetWindowTextW(state->statusTimeLabel, parts.time.c_str());
     }
-    SendMessageW(state->statusBar, SB_SETTEXT, 0, reinterpret_cast<LPARAM>(text.c_str()));
-    UpdateStatusDetails(state);
+    if (state->statusMetaLabel) {
+        std::wstring meta = parts.size + L" | " + parts.format;
+        SetWindowTextW(state->statusMetaLabel, meta.c_str());
+    }
+    if (state->statusBar) {
+        std::wstring summary = BuildRecordingSummary(state);
+        SendMessageW(state->statusBar, SB_SETTEXT, 0, reinterpret_cast<LPARAM>(summary.c_str()));
+    }
 }
 
 void SetControlFont(HWND control, HFONT font) {
@@ -306,23 +307,7 @@ void PostDeviceNameUpdate(HWND hwnd, const std::wstring& name) {
 }
 
 void UpdateStatusDetails(AppState* state) {
-    if (!state || !state->statusBar) {
-        return;
-    }
-    const bool mp3Selected = state->formatCombo &&
-        SendMessageW(state->formatCombo, CB_GETCURSEL, 0, 0) == 1;
-    const int bitrate = GetBitrateFromEdit(state->bitrateEdit, state->defaultBitrate);
-    std::wstring detail = mp3Selected ? L"MP3" : L"WAV";
-    if (mp3Selected) {
-        detail += L" | ";
-        detail += std::to_wstring(bitrate);
-        detail += L" kbps";
-    }
-    if (!state->currentDeviceName.empty()) {
-        detail += L" | ";
-        detail += state->currentDeviceName;
-    }
-    SendMessageW(state->statusBar, SB_SETTEXT, 1, reinterpret_cast<LPARAM>(detail.c_str()));
+    UpdateStatusText(state);
 }
 
 void UpdateMenuForState(AppState* state) {
@@ -363,21 +348,40 @@ void UpdateMenuForState(AppState* state) {
 void UpdateControlsForState(AppState* state) {
     const bool playbackActive = state->playbackState == PlaybackState::Playing ||
         state->playbackState == PlaybackState::Opening;
-    const bool canStart = state->state == AppState::RecorderState::Idle && !playbackActive;
+    const bool canToggle = !playbackActive &&
+        (state->state == AppState::RecorderState::Idle ||
+         state->state == AppState::RecorderState::Recording ||
+         state->state == AppState::RecorderState::Recovering);
     const bool canStop = state->state == AppState::RecorderState::Starting
         || state->state == AppState::RecorderState::Recording
         || state->state == AppState::RecorderState::Recovering
         || state->state == AppState::RecorderState::Stopping;
     const bool canEdit = state->state == AppState::RecorderState::Idle && !playbackActive;
-    EnableWindow(state->startButton, canStart ? TRUE : FALSE);
-    EnableWindow(state->stopButton, canStop ? TRUE : FALSE);
+    EnableWindow(state->startButton, canToggle ? TRUE : FALSE);
+    if (state->stopButton) {
+        EnableWindow(state->stopButton, canStop ? TRUE : FALSE);
+    }
     EnableWindow(state->outputEdit, canEdit ? TRUE : FALSE);
     EnableWindow(state->formatCombo, canEdit ? TRUE : FALSE);
+    EnableWindow(state->browseButton, canEdit ? TRUE : FALSE);
+    EnableWindow(state->browseFolderButton, canEdit ? TRUE : FALSE);
+    EnableWindow(state->openFolderButton, canEdit ? TRUE : FALSE);
     const bool mp3Selected = state->formatCombo &&
         SendMessageW(state->formatCombo, CB_GETCURSEL, 0, 0) == 1;
     EnableWindow(state->bitrateEdit, (canEdit && mp3Selected) ? TRUE : FALSE);
     EnableWindow(state->pauseButton, (state->state == AppState::RecorderState::Recording ||
                                       state->state == AppState::RecorderState::Recovering) ? TRUE : FALSE);
+    const wchar_t* startLabel = L"开始录音";
+    if (state->state == AppState::RecorderState::Recording ||
+        state->state == AppState::RecorderState::Recovering) {
+        startLabel = L"停止录音";
+    } else if (state->state == AppState::RecorderState::Starting) {
+        startLabel = L"启动中...";
+    } else if (state->state == AppState::RecorderState::Stopping) {
+        startLabel = L"停止中...";
+    }
+    SetWindowTextW(state->startButton, startLabel);
+    InvalidateRect(state->startButton, nullptr, TRUE);
     UpdatePlaybackControls(state);
     UpdateMenuForState(state);
 }
@@ -400,9 +404,8 @@ void UpdateStatusBarLayout(AppState* state) {
     RECT rect{};
     GetClientRect(state->hwnd, &rect);
     const int width = rect.right - rect.left;
-    const int rightWidth = 320;
-    int parts[2] = { (std::max)(0, width - rightWidth), -1 };
-    SendMessageW(state->statusBar, SB_SETPARTS, 2, reinterpret_cast<LPARAM>(parts));
+    int parts[1] = { width };
+    SendMessageW(state->statusBar, SB_SETPARTS, 1, reinterpret_cast<LPARAM>(parts));
 }
 
 void BuildMainMenu(AppState* state) {
@@ -424,8 +427,8 @@ void BuildMainMenu(AppState* state) {
     AppendMenuW(fileMenu, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(fileMenu, MF_STRING, IDM_FILE_EXIT, L"退出");
 
-    AppendMenuW(recordMenu, MF_STRING, IDM_RECORD_START_STOP, L"开始/停止\tCtrl+R");
-    AppendMenuW(recordMenu, MF_STRING, IDM_RECORD_PAUSE, L"暂停/继续\tCtrl+P");
+    AppendMenuW(recordMenu, MF_STRING, IDM_RECORD_START_STOP, L"开始录音/停止录音\tCtrl+R");
+    AppendMenuW(recordMenu, MF_STRING, IDM_RECORD_PAUSE, L"暂停/继续录音\tCtrl+P");
 
     AppendMenuW(playbackMenu, MF_STRING, IDM_PLAYBACK_PLAY, L"播放\tSpace");
     AppendMenuW(playbackMenu, MF_STRING, IDM_PLAYBACK_PAUSE, L"暂停\tCtrl+Alt+P");
@@ -698,6 +701,93 @@ void UpdatePlaybackControls(AppState* state) {
     EnableWindow(state->playbackVolume, canUsePlayback ? TRUE : FALSE);
 }
 
+RecordingStatusParts BuildRecordingStatusParts(AppState* state) {
+    RecordingStatusParts parts{};
+    if (!state) {
+        return parts;
+    }
+    std::wstring status;
+    switch (state->state) {
+    case AppState::RecorderState::Idle:
+        status = L"空闲";
+        break;
+    case AppState::RecorderState::Starting:
+        status = L"启动中";
+        break;
+    case AppState::RecorderState::Recording:
+        status = state->paused ? L"已暂停" : L"录音中";
+        break;
+    case AppState::RecorderState::Recovering:
+        status = L"重连中";
+        break;
+    case AppState::RecorderState::Stopping:
+        status = L"停止中";
+        break;
+    default:
+        status = L"未知";
+        break;
+    }
+    parts.status = status;
+
+    auto now = std::chrono::steady_clock::now();
+    std::chrono::seconds elapsed{0};
+    if (state->state == AppState::RecorderState::Recording || state->state == AppState::RecorderState::Stopping ||
+        state->state == AppState::RecorderState::Recovering) {
+        elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - state->startTime - state->pausedTotal);
+        if (state->paused) {
+            elapsed -= std::chrono::duration_cast<std::chrono::seconds>(now - state->pauseStart);
+        }
+        if (elapsed.count() < 0) {
+            elapsed = std::chrono::seconds(0);
+        }
+    }
+    const int hours = static_cast<int>(elapsed.count() / 3600);
+    const int mins = static_cast<int>((elapsed.count() % 3600) / 60);
+    const int secs = static_cast<int>(elapsed.count() % 60);
+    wchar_t timeBuf[16];
+    swprintf_s(timeBuf, L"%02d:%02d:%02d", hours, mins, secs);
+    parts.time = timeBuf;
+
+    std::filesystem::path sizePath = state->currentOutputPath;
+    if (!sizePath.empty()) {
+        sizePath = BuildSegmentPath(sizePath, 0);
+    }
+    uintmax_t bytes = 0;
+    std::error_code ec;
+    if (!sizePath.empty() && std::filesystem::exists(sizePath, ec)) {
+        bytes = std::filesystem::file_size(sizePath, ec);
+    }
+    parts.size = FormatBytes(bytes);
+
+    const bool mp3Selected = state->formatCombo &&
+        SendMessageW(state->formatCombo, CB_GETCURSEL, 0, 0) == 1;
+    const int bitrate = GetBitrateFromEdit(state->bitrateEdit, state->defaultBitrate);
+    std::wstring format = mp3Selected ? L"MP3" : L"WAV";
+    if (mp3Selected) {
+        format += L" ";
+        format += std::to_wstring(bitrate);
+        format += L" kbps";
+    }
+    parts.format = format;
+    return parts;
+}
+
+std::wstring BuildRecordingSummary(AppState* state) {
+    if (!state) {
+        return L"";
+    }
+    RecordingStatusParts parts = BuildRecordingStatusParts(state);
+
+    std::wstring summary = parts.status;
+    summary += L" | ";
+    summary += parts.time;
+    summary += L" | ";
+    summary += parts.size;
+    summary += L" | ";
+    summary += parts.format;
+    return summary;
+}
+
 void UpdateOutputExtension(AppState* state) {
     if (!state || state->state != AppState::RecorderState::Idle) {
         return;
@@ -895,15 +985,18 @@ void TogglePause(AppState* state) {
     state->paused = newPaused;
     if (newPaused) {
         state->pauseStart = std::chrono::steady_clock::now();
-        SetWindowTextW(state->pauseButton, L"继续");
+        SetWindowTextW(state->pauseButton, L"继续录音");
         AppendLog(state->logEdit, L"[界面] 已暂停。");
     } else {
         state->pausedTotal += std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - state->pauseStart);
-        SetWindowTextW(state->pauseButton, L"暂停");
+        SetWindowTextW(state->pauseButton, L"暂停录音");
         AppendLog(state->logEdit, L"[界面] 已继续。");
     }
     UpdateStatusText(state);
+    if (state->startButton) {
+        InvalidateRect(state->startButton, nullptr, TRUE);
+    }
 }
 
 void CleanupWorker(AppState* state) {
@@ -914,7 +1007,7 @@ void CleanupWorker(AppState* state) {
     state->pauseRequested.store(false);
     state->paused = false;
     state->pausedTotal = std::chrono::milliseconds(0);
-    SetWindowTextW(state->pauseButton, L"暂停");
+    SetWindowTextW(state->pauseButton, L"暂停录音");
     state->state = AppState::RecorderState::Idle;
     UpdateControlsForState(state);
     AppendLog(state->logEdit, L"[界面] 录音已停止。");
@@ -922,190 +1015,213 @@ void CleanupWorker(AppState* state) {
 }
 
 void CreateChildControls(HWND hwnd, AppState* state) {
-    const int padding = 14;
-    const int headerHeight = 34;
-    const int labelHeight = 20;
+    const int padding = 20;
+    const int labelHeight = 16;
     const int editHeight = 26;
-    const int buttonHeight = 28;
-    const int buttonWidth = 86;
-    const int wideButtonWidth = 130;
-    const int windowWidth = 620;
-    const int contentWidth = windowWidth - padding * 2 - 12;
+    const int buttonHeight = 30;
+    const int startButtonSize = 88;
+    RECT client{};
+    GetClientRect(hwnd, &client);
+    int windowWidth = static_cast<int>(client.right - client.left);
+    if (windowWidth <= 0) {
+        windowWidth = 900;
+    }
+    const int contentWidth = windowWidth - padding * 2;
 
-    state->uiFont = CreateFontW(18, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+    state->uiFont = CreateFontW(13, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
                                 OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
                                 DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
-    state->uiFontBold = CreateFontW(18, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+    state->uiFontBold = CreateFontW(13, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
                                     OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
                                     DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
-    state->uiFontTitle = CreateFontW(22, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+    state->uiFontTitle = CreateFontW(16, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
                                      OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
                                      DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
+    state->uiFontSecondary = CreateFontW(11, 0, 0, 0, FW_LIGHT, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+                                         OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
+                                         DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
+    state->uiFontTimer = CreateFontW(26, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+                                     OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
+                                     DEFAULT_PITCH | FF_MODERN, L"Consolas");
     state->backgroundBrush = CreateSolidBrush(state->backgroundColor);
     state->headerBrush = CreateSolidBrush(state->headerColor);
+    state->panelBrush = CreateSolidBrush(state->panelColor);
+    state->panelAltBrush = CreateSolidBrush(state->panelAltColor);
     HFONT font = state->uiFont;
 
     const int groupLeft = padding;
-    int y = padding + headerHeight + 6;
+    int y = padding;
 
-    state->headerLabel = CreateWindowW(L"STATIC", L"系统录音工具",
-                                       WS_VISIBLE | WS_CHILD,
-                                       groupLeft, padding, contentWidth, headerHeight,
-                                       hwnd, nullptr, nullptr, nullptr);
-    SetControlFont(state->headerLabel, state->uiFontTitle);
+    state->headerLabel = nullptr;
 
-    HWND outputGroup = CreateWindowW(L"BUTTON", L"输出", WS_VISIBLE | WS_CHILD | BS_GROUPBOX,
-                                     groupLeft, y, contentWidth, 86, hwnd, nullptr, nullptr, nullptr);
-    SetControlFont(outputGroup, font);
+    const int statusGroupHeight = 80;
+    state->statusGroup = CreateWindowW(L"BUTTON", L"录音状态", WS_VISIBLE | WS_CHILD | BS_GROUPBOX,
+                                     groupLeft, y, contentWidth, statusGroupHeight, hwnd, nullptr, nullptr, nullptr);
+    SetControlFont(state->statusGroup, state->uiFontSecondary);
 
-    const int outputLabelY = y + 22;
-    HWND outputLabel = CreateWindowW(L"STATIC", L"文件：", WS_VISIBLE | WS_CHILD,
-                                     groupLeft + 12, outputLabelY, 60, labelHeight, hwnd, nullptr, nullptr, nullptr);
-    SetControlFont(outputLabel, font);
-    state->outputEdit = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", DefaultOutputPath().wstring().c_str(),
+    state->statusStateLabel = CreateWindowW(L"STATIC", L"空闲", WS_VISIBLE | WS_CHILD,
+                                            groupLeft + 16, y + 20, contentWidth - 32, labelHeight,
+                                            hwnd, nullptr, nullptr, nullptr);
+    SetControlFont(state->statusStateLabel, state->uiFontTitle);
+
+    state->statusTimeLabel = CreateWindowW(L"STATIC", L"00:00:00", WS_VISIBLE | WS_CHILD,
+                                           groupLeft + 16, y + 36, contentWidth - 32, 30,
+                                           hwnd, nullptr, nullptr, nullptr);
+    SetControlFont(state->statusTimeLabel, state->uiFontTimer);
+
+    state->statusMetaLabel = CreateWindowW(L"STATIC", L"0 B | MP3 192 kbps", WS_VISIBLE | WS_CHILD,
+                                           groupLeft + 16, y + 62, contentWidth - 32, labelHeight,
+                                           hwnd, nullptr, nullptr, nullptr);
+    SetControlFont(state->statusMetaLabel, state->uiFontSecondary);
+
+    y += statusGroupHeight + 10;
+    const int actionGroupHeight = 150;
+    state->actionGroup = CreateWindowW(L"BUTTON", L"主要操作", WS_VISIBLE | WS_CHILD | BS_GROUPBOX,
+                                     groupLeft, y, contentWidth, actionGroupHeight, hwnd, nullptr, nullptr, nullptr);
+    SetControlFont(state->actionGroup, state->uiFontSecondary);
+
+    const int startX = groupLeft + (contentWidth - startButtonSize) / 2;
+    state->startButton = CreateWindowW(L"BUTTON", L"开始录音",
+                                       WS_VISIBLE | WS_CHILD | BS_OWNERDRAW,
+                                       startX, y + 24, startButtonSize, startButtonSize,
+                                       hwnd, reinterpret_cast<HMENU>(IDC_START_BUTTON), nullptr, nullptr);
+    SetControlFont(state->startButton, state->uiFontBold);
+
+    const int secondaryRowY = y + 24 + startButtonSize + 8;
+    const int secondarySpacing = 12;
+    const int secondaryButtonWidth = 84;
+    const int secondaryRowWidth = secondaryButtonWidth + secondarySpacing + secondaryButtonWidth;
+    const int secondaryX = groupLeft + (contentWidth - secondaryRowWidth) / 2;
+    state->pauseButton = CreateWindowW(L"BUTTON", L"暂停录音",
+                                       WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
+                                       secondaryX, secondaryRowY,
+                                       secondaryButtonWidth, buttonHeight,
+                                       hwnd, reinterpret_cast<HMENU>(IDC_PAUSE_BUTTON), nullptr, nullptr);
+    SetControlFont(state->pauseButton, font);
+    EnableWindow(state->pauseButton, FALSE);
+
+    state->stopButton = nullptr;
+
+    y += actionGroupHeight + 10;
+    const int settingsGroupHeight = 130;
+    state->settingsGroup = CreateWindowW(L"BUTTON", L"录音设置", WS_VISIBLE | WS_CHILD | BS_GROUPBOX,
+                                      groupLeft, y, contentWidth, settingsGroupHeight, hwnd, nullptr, nullptr, nullptr);
+    SetControlFont(state->settingsGroup, state->uiFontSecondary);
+
+    const int outputLabelY = y + 24;
+    state->outputLabel = CreateWindowW(L"STATIC", L"输出文件：", WS_VISIBLE | WS_CHILD,
+                                     groupLeft + 12, outputLabelY, 72, labelHeight, hwnd, nullptr, nullptr, nullptr);
+    SetControlFont(state->outputLabel, state->uiFontSecondary);
+    state->outputEdit = CreateWindowExW(0, L"EDIT", DefaultOutputPath().wstring().c_str(),
                                         WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL,
-                                        groupLeft + 64, outputLabelY - 2, 270, editHeight,
+                                        groupLeft + 86, outputLabelY - 2, contentWidth - 98, editHeight,
                                         hwnd, reinterpret_cast<HMENU>(IDC_OUTPUT_EDIT), nullptr, nullptr);
     SetControlFont(state->outputEdit, font);
 
-    const int buttonRowX = groupLeft + 344;
-    HWND browseButton = CreateWindowW(L"BUTTON", L"选择文件",
+    const int buttonRowY = y + 54;
+    const int smallButtonWidth = 110;
+    state->browseButton = CreateWindowW(L"BUTTON", L"选择文件",
                                       WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
-                                      buttonRowX, outputLabelY - 2, buttonWidth, buttonHeight,
+                                      groupLeft + 12, buttonRowY, smallButtonWidth, buttonHeight,
                                       hwnd, reinterpret_cast<HMENU>(IDC_BROWSE_BUTTON), nullptr, nullptr);
-    SetControlFont(browseButton, font);
+    SetControlFont(state->browseButton, font);
 
-    HWND browseFolderButton = CreateWindowW(L"BUTTON", L"选择文件夹",
+    state->browseFolderButton = CreateWindowW(L"BUTTON", L"选择文件夹",
                                             WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
-                                            buttonRowX + buttonWidth + 8, outputLabelY - 2, wideButtonWidth, buttonHeight,
+                                            groupLeft + 12 + smallButtonWidth + 8, buttonRowY, smallButtonWidth, buttonHeight,
                                             hwnd, reinterpret_cast<HMENU>(IDC_BROWSE_FOLDER), nullptr, nullptr);
-    SetControlFont(browseFolderButton, font);
+    SetControlFont(state->browseFolderButton, font);
 
-    HWND openFolderButton = CreateWindowW(L"BUTTON", L"打开音频保存目录",
+    state->openFolderButton = CreateWindowW(L"BUTTON", L"打开目录",
                                           WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
-                                          buttonRowX, outputLabelY + 32, wideButtonWidth + buttonWidth + 8, buttonHeight,
+                                          groupLeft + 12 + (smallButtonWidth + 8) * 2, buttonRowY, smallButtonWidth, buttonHeight,
                                           hwnd, reinterpret_cast<HMENU>(IDC_OPEN_FOLDER), nullptr, nullptr);
-    SetControlFont(openFolderButton, font);
+    SetControlFont(state->openFolderButton, font);
 
-    y += 94;
-    HWND formatGroup = CreateWindowW(L"BUTTON", L"格式", WS_VISIBLE | WS_CHILD | BS_GROUPBOX,
-                                     groupLeft, y, contentWidth, 70, hwnd, nullptr, nullptr, nullptr);
-    SetControlFont(formatGroup, font);
-
-    const int formatLabelY = y + 26;
-    HWND formatLabel = CreateWindowW(L"STATIC", L"输出格式：", WS_VISIBLE | WS_CHILD,
-                                     groupLeft + 12, formatLabelY, 80, labelHeight, hwnd, nullptr, nullptr, nullptr);
-    SetControlFont(formatLabel, font);
+    const int formatRowY = y + 86;
+    state->formatLabel = CreateWindowW(L"STATIC", L"输出格式：", WS_VISIBLE | WS_CHILD,
+                                     groupLeft + 12, formatRowY, 72, labelHeight, hwnd, nullptr, nullptr, nullptr);
+    SetControlFont(state->formatLabel, state->uiFontSecondary);
     state->formatCombo = CreateWindowW(L"COMBOBOX", L"", WS_VISIBLE | WS_CHILD | CBS_DROPDOWNLIST,
-                                       groupLeft + 94, formatLabelY - 2, 120, 200,
+                                       groupLeft + 86, formatRowY - 2, 120, 200,
                                        hwnd, reinterpret_cast<HMENU>(IDC_FORMAT_COMBO), nullptr, nullptr);
     SetControlFont(state->formatCombo, font);
     SendMessageW(state->formatCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"WAV"));
     SendMessageW(state->formatCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"MP3"));
     SendMessageW(state->formatCombo, CB_SETCURSEL, 1, 0);
 
-    HWND bitrateLabel = CreateWindowW(L"STATIC", L"MP3 比特率 (kbps)：", WS_VISIBLE | WS_CHILD,
-                                      groupLeft + 230, formatLabelY, 150, labelHeight, hwnd, nullptr, nullptr, nullptr);
-    SetControlFont(bitrateLabel, font);
-    state->bitrateEdit = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"192",
+    state->bitrateLabel = CreateWindowW(L"STATIC", L"音质 (kbps)：", WS_VISIBLE | WS_CHILD,
+                                      groupLeft + 230, formatRowY, 90, labelHeight, hwnd, nullptr, nullptr, nullptr);
+    SetControlFont(state->bitrateLabel, state->uiFontSecondary);
+    state->bitrateEdit = CreateWindowExW(0, L"EDIT", L"192",
                                          WS_VISIBLE | WS_CHILD | ES_NUMBER,
-                                         groupLeft + 386, formatLabelY - 2,
+                                         groupLeft + 324, formatRowY - 2,
                                          90, editHeight,
                                          hwnd, reinterpret_cast<HMENU>(IDC_BITRATE_EDIT), nullptr, nullptr);
     SetControlFont(state->bitrateEdit, font);
 
-    y += 78;
-    HWND controlGroup = CreateWindowW(L"BUTTON", L"控制", WS_VISIBLE | WS_CHILD | BS_GROUPBOX,
-                                      groupLeft, y, contentWidth, 72, hwnd, nullptr, nullptr, nullptr);
-    SetControlFont(controlGroup, font);
-
-    const int controlY = y + 26;
-    state->startButton = CreateWindowW(L"BUTTON", L"开始录音",
-                                       WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON,
-                                       groupLeft + 12, controlY - 2,
-                                       buttonWidth + 16, buttonHeight,
-                                       hwnd, reinterpret_cast<HMENU>(IDC_START_BUTTON), nullptr, nullptr);
-    SetControlFont(state->startButton, state->uiFontBold);
-
-    state->stopButton = CreateWindowW(L"BUTTON", L"停止",
-                                      WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
-                                      groupLeft + 140, controlY - 2,
-                                      buttonWidth, buttonHeight,
-                                      hwnd, reinterpret_cast<HMENU>(IDC_STOP_BUTTON), nullptr, nullptr);
-    SetControlFont(state->stopButton, font);
-    EnableWindow(state->stopButton, FALSE);
-
-    state->pauseButton = CreateWindowW(L"BUTTON", L"暂停",
-                                       WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
-                                       groupLeft + 246, controlY - 2,
-                                       buttonWidth, buttonHeight,
-                                       hwnd, reinterpret_cast<HMENU>(IDC_PAUSE_BUTTON), nullptr, nullptr);
-    SetControlFont(state->pauseButton, font);
-    EnableWindow(state->pauseButton, FALSE);
-
-    y += 82;
-    const int playbackGroupHeight = 110;
-    HWND playbackGroup = CreateWindowW(L"BUTTON", L"播放", WS_VISIBLE | WS_CHILD | BS_GROUPBOX,
+    y += settingsGroupHeight + 10;
+    const int playbackGroupHeight = 90;
+    state->playbackGroup = CreateWindowW(L"BUTTON", L"回放检查", WS_VISIBLE | WS_CHILD | BS_GROUPBOX,
                                        groupLeft, y, contentWidth, playbackGroupHeight, hwnd, nullptr, nullptr, nullptr);
-    SetControlFont(playbackGroup, font);
+    SetControlFont(state->playbackGroup, state->uiFontSecondary);
 
     const int playbackRowY = y + 24;
     state->playbackPlayButton = CreateWindowW(L"BUTTON", L"播放",
                                               WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
                                               groupLeft + 12, playbackRowY,
-                                              buttonWidth, buttonHeight,
+                                              90, buttonHeight,
                                               hwnd, reinterpret_cast<HMENU>(IDC_PLAYBACK_PLAY), nullptr, nullptr);
     SetControlFont(state->playbackPlayButton, font);
 
     state->playbackPauseButton = CreateWindowW(L"BUTTON", L"暂停",
                                                WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
-                                               groupLeft + 108, playbackRowY,
-                                               buttonWidth, buttonHeight,
+                                               groupLeft + 110, playbackRowY,
+                                               90, buttonHeight,
                                                hwnd, reinterpret_cast<HMENU>(IDC_PLAYBACK_PAUSE), nullptr, nullptr);
     SetControlFont(state->playbackPauseButton, font);
 
     state->playbackStopButton = CreateWindowW(L"BUTTON", L"停止",
                                               WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
-                                              groupLeft + 204, playbackRowY,
-                                              buttonWidth, buttonHeight,
+                                              groupLeft + 208, playbackRowY,
+                                              90, buttonHeight,
                                               hwnd, reinterpret_cast<HMENU>(IDC_PLAYBACK_STOP), nullptr, nullptr);
     SetControlFont(state->playbackStopButton, font);
 
-    HWND volumeLabel = CreateWindowW(L"STATIC", L"音量：", WS_VISIBLE | WS_CHILD,
-                                     groupLeft + 320, playbackRowY + 4, 48, labelHeight,
-                                     hwnd, nullptr, nullptr, nullptr);
-    SetControlFont(volumeLabel, font);
-
-    state->playbackVolume = CreateWindowW(TRACKBAR_CLASSW, L"",
-                                          WS_VISIBLE | WS_CHILD | TBS_AUTOTICKS,
-                                          groupLeft + 370, playbackRowY,
-                                          150, buttonHeight,
-                                          hwnd, reinterpret_cast<HMENU>(IDC_PLAYBACK_VOLUME), nullptr, nullptr);
-    SendMessageW(state->playbackVolume, TBM_SETRANGE, TRUE, MAKELONG(0, 100));
-    SendMessageW(state->playbackVolume, TBM_SETPOS, TRUE, static_cast<LPARAM>(state->playbackVolumeValue * 100));
-
-    const int seekRowY = y + 64;
     state->playbackSeek = CreateWindowW(TRACKBAR_CLASSW, L"",
                                         WS_VISIBLE | WS_CHILD | TBS_AUTOTICKS,
-                                        groupLeft + 12, seekRowY,
-                                        contentWidth - 160, 28,
+                                        groupLeft + 310, playbackRowY,
+                                        contentWidth - 420, buttonHeight,
                                         hwnd, reinterpret_cast<HMENU>(IDC_PLAYBACK_SEEK), nullptr, nullptr);
     SendMessageW(state->playbackSeek, TBM_SETRANGE, TRUE, MAKELONG(0, 1000));
 
     state->playbackTimeLabel = CreateWindowW(L"STATIC", L"00:00 / 00:00", WS_VISIBLE | WS_CHILD,
-                                             groupLeft + contentWidth - 140, seekRowY + 4,
-                                             128, labelHeight,
+                                             groupLeft + contentWidth - 90, playbackRowY + 4,
+                                             90, labelHeight,
                                              hwnd, reinterpret_cast<HMENU>(IDC_PLAYBACK_TIME), nullptr, nullptr);
-    SetControlFont(state->playbackTimeLabel, font);
+    SetControlFont(state->playbackTimeLabel, state->uiFontSecondary);
+
+    state->playbackVolumeLabel = CreateWindowW(L"STATIC", L"音量：", WS_VISIBLE | WS_CHILD,
+                                     groupLeft + 12, playbackRowY + 34, 48, labelHeight,
+                                     hwnd, nullptr, nullptr, nullptr);
+    SetControlFont(state->playbackVolumeLabel, state->uiFontSecondary);
+
+    state->playbackVolume = CreateWindowW(TRACKBAR_CLASSW, L"",
+                                          WS_VISIBLE | WS_CHILD | TBS_AUTOTICKS,
+                                          groupLeft + 60, playbackRowY + 32,
+                                          200, buttonHeight,
+                                          hwnd, reinterpret_cast<HMENU>(IDC_PLAYBACK_VOLUME), nullptr, nullptr);
+    SendMessageW(state->playbackVolume, TBM_SETRANGE, TRUE, MAKELONG(0, 100));
+    SendMessageW(state->playbackVolume, TBM_SETPOS, TRUE, static_cast<LPARAM>(state->playbackVolumeValue * 100));
 
     y += playbackGroupHeight + 10;
-    const int logGroupHeight = 218;
-    const int logEditHeight = 170;
-    HWND logGroup = CreateWindowW(L"BUTTON", L"日志", WS_VISIBLE | WS_CHILD | BS_GROUPBOX,
+    const int logGroupHeight = 84;
+    const int logEditHeight = 60;
+    state->logGroup = CreateWindowW(L"BUTTON", L"日志", WS_VISIBLE | WS_CHILD | BS_GROUPBOX,
                                   groupLeft, y, contentWidth, logGroupHeight, hwnd, nullptr, nullptr, nullptr);
-    SetControlFont(logGroup, font);
+    SetControlFont(state->logGroup, state->uiFontSecondary);
 
-    state->logEdit = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"",
+    state->logEdit = CreateWindowExW(0, L"EDIT", L"",
                                      WS_VISIBLE | WS_CHILD | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY | WS_VSCROLL,
                                      groupLeft + 12, y + 26,
                                      contentWidth - 24, logEditHeight,
@@ -1116,17 +1232,17 @@ void CreateChildControls(HWND hwnd, AppState* state) {
     if (SHGetFileInfoW(L".txt", FILE_ATTRIBUTE_NORMAL, &sfi, sizeof(sfi),
                        SHGFI_ICON | SHGFI_SMALLICON | SHGFI_USEFILEATTRIBUTES)) {
         state->fileIcon = sfi.hIcon;
-        AttachButtonIcon(browseButton, state->fileIcon, state->fileImageList);
+        AttachButtonIcon(state->browseButton, state->fileIcon, state->fileImageList);
     }
     if (SHGetFileInfoW(L"C:\\", FILE_ATTRIBUTE_DIRECTORY, &sfi, sizeof(sfi),
                        SHGFI_ICON | SHGFI_SMALLICON | SHGFI_USEFILEATTRIBUTES)) {
         state->folderIcon = sfi.hIcon;
-        AttachButtonIcon(browseFolderButton, state->folderIcon, state->folderImageList);
+        AttachButtonIcon(state->browseFolderButton, state->folderIcon, state->folderImageList);
     }
     if (SHGetFileInfoW(L"C:\\", FILE_ATTRIBUTE_DIRECTORY, &sfi, sizeof(sfi),
                        SHGFI_ICON | SHGFI_SMALLICON | SHGFI_USEFILEATTRIBUTES)) {
         state->openIcon = sfi.hIcon;
-        AttachButtonIcon(openFolderButton, state->openIcon, state->openImageList);
+        AttachButtonIcon(state->openFolderButton, state->openIcon, state->openImageList);
     }
 }
 
@@ -1149,6 +1265,7 @@ LRESULT CALLBACK MainWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
         if (newState->uiFont) {
             SetControlFont(newState->statusBar, newState->uiFont);
         }
+        SendMessageW(newState->statusBar, SB_SETBKCOLOR, 0, newState->panelColor);
         SendMessageW(newState->statusBar, SB_SIMPLE, TRUE, 0);
         UpdateStatusBarLayout(newState.get());
         UpdateStatusText(newState.get());
@@ -1174,7 +1291,12 @@ LRESULT CALLBACK MainWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             OpenOutputFolder(state);
             return 0;
         case IDC_START_BUTTON:
-            StartRecording(state);
+            if (state->state == AppState::RecorderState::Idle) {
+                StartRecording(state);
+            } else if (state->state == AppState::RecorderState::Recording ||
+                       state->state == AppState::RecorderState::Recovering) {
+                StopRecording(state);
+            }
             return 0;
         case IDC_STOP_BUTTON:
             StopRecording(state);
@@ -1384,18 +1506,87 @@ LRESULT CALLBACK MainWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             UpdateControlsForState(state);
         }
         return 0;
+    case WM_DRAWITEM:
+        if (state && wParam == IDC_START_BUTTON) {
+            auto* dis = reinterpret_cast<DRAWITEMSTRUCT*>(lParam);
+            if (!dis) {
+                return TRUE;
+            }
+            const bool disabled = (dis->itemState & ODS_DISABLED) != 0;
+            const bool pressed = (dis->itemState & ODS_SELECTED) != 0;
+            COLORREF fill = state->panelColor;
+            if (state->state == AppState::RecorderState::Recording ||
+                state->state == AppState::RecorderState::Recovering) {
+                fill = state->paused ? state->pauseColor : state->recordColor;
+            }
+            if (disabled) {
+                fill = RGB(0x2A, 0x30, 0x36);
+            }
+            HBRUSH fillBrush = CreateSolidBrush(fill);
+            FillRect(dis->hDC, &dis->rcItem, fillBrush);
+            DeleteObject(fillBrush);
+
+            HBRUSH frameBrush = CreateSolidBrush(state->borderColor);
+            FrameRect(dis->hDC, &dis->rcItem, frameBrush);
+            DeleteObject(frameBrush);
+
+            if (pressed) {
+                OffsetRect(&dis->rcItem, 1, 1);
+            }
+
+            SetBkMode(dis->hDC, TRANSPARENT);
+            SetTextColor(dis->hDC, state->textPrimary);
+            HFONT oldFont = reinterpret_cast<HFONT>(SelectObject(dis->hDC, state->uiFontBold));
+            std::wstring label = GetWindowTextString(state->startButton);
+            DrawTextW(dis->hDC, label.c_str(), static_cast<int>(label.size()),
+                      &dis->rcItem, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+            SelectObject(dis->hDC, oldFont);
+
+            if (dis->itemState & ODS_FOCUS) {
+                DrawFocusRect(dis->hDC, &dis->rcItem);
+            }
+            return TRUE;
+        }
+        break;
     case WM_CTLCOLORSTATIC:
         if (state) {
             HDC hdc = reinterpret_cast<HDC>(wParam);
             HWND target = reinterpret_cast<HWND>(lParam);
             if (target == state->headerLabel && state->headerBrush) {
-                SetTextColor(hdc, RGB(40, 60, 90));
+                SetTextColor(hdc, state->textPrimary);
                 SetBkColor(hdc, state->headerColor);
                 return reinterpret_cast<INT_PTR>(state->headerBrush);
             }
-            SetTextColor(hdc, RGB(35, 35, 35));
-            SetBkColor(hdc, state->backgroundColor);
+            if (target == state->statusStateLabel) {
+                COLORREF statusColor = state->textSecondary;
+                if (state->state == AppState::RecorderState::Recording ||
+                    state->state == AppState::RecorderState::Recovering) {
+                    statusColor = state->paused ? state->pauseColor : state->recordColor;
+                }
+                SetTextColor(hdc, statusColor);
+            } else if (target == state->statusTimeLabel) {
+                SetTextColor(hdc, state->textPrimary);
+            } else if (target == state->statusMetaLabel || target == state->playbackTimeLabel) {
+                SetTextColor(hdc, state->textSecondary);
+            } else if (target == state->statusBar) {
+                SetTextColor(hdc, state->textSecondary);
+            } else {
+                SetTextColor(hdc, state->textTertiary);
+            }
+            const bool usePanelBackground = (target == state->statusStateLabel ||
+                                              target == state->statusTimeLabel ||
+                                              target == state->statusMetaLabel ||
+                                              target == state->outputLabel ||
+                                              target == state->formatLabel ||
+                                              target == state->bitrateLabel ||
+                                              target == state->playbackTimeLabel ||
+                                              target == state->playbackVolumeLabel);
             SetBkMode(hdc, TRANSPARENT);
+            if (usePanelBackground && state->panelBrush) {
+                SetBkColor(hdc, state->panelColor);
+                return reinterpret_cast<INT_PTR>(state->panelBrush);
+            }
+            SetBkColor(hdc, state->backgroundColor);
             if (state->backgroundBrush) {
                 return reinterpret_cast<INT_PTR>(state->backgroundBrush);
             }
@@ -1404,14 +1595,29 @@ LRESULT CALLBACK MainWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
     case WM_CTLCOLOREDIT:
         if (state) {
             HDC hdc = reinterpret_cast<HDC>(wParam);
-            SetTextColor(hdc, RGB(20, 20, 20));
-            SetBkColor(hdc, RGB(255, 255, 255));
-            return reinterpret_cast<INT_PTR>(GetSysColorBrush(COLOR_WINDOW));
+            HWND target = reinterpret_cast<HWND>(lParam);
+            if (target == state->logEdit) {
+                SetTextColor(hdc, state->textSecondary);
+            } else {
+                SetTextColor(hdc, state->textPrimary);
+            }
+            SetBkColor(hdc, state->panelAltColor);
+            return reinterpret_cast<INT_PTR>(state->panelAltBrush ? state->panelAltBrush : state->backgroundBrush);
         }
         break;
     case WM_CTLCOLORBTN:
-        if (state && state->backgroundBrush) {
+        if (state) {
             HDC hdc = reinterpret_cast<HDC>(wParam);
+            HWND target = reinterpret_cast<HWND>(lParam);
+            SetTextColor(hdc, state->textSecondary);
+            if (target == state->statusGroup ||
+                target == state->actionGroup ||
+                target == state->settingsGroup ||
+                target == state->playbackGroup ||
+                target == state->logGroup) {
+                SetBkColor(hdc, state->panelColor);
+                return reinterpret_cast<INT_PTR>(state->panelBrush ? state->panelBrush : state->backgroundBrush);
+            }
             SetBkColor(hdc, state->backgroundColor);
             return reinterpret_cast<INT_PTR>(state->backgroundBrush);
         }
@@ -1498,6 +1704,14 @@ LRESULT CALLBACK MainWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 DeleteObject(state->headerBrush);
                 state->headerBrush = nullptr;
             }
+            if (state->panelBrush) {
+                DeleteObject(state->panelBrush);
+                state->panelBrush = nullptr;
+            }
+            if (state->panelAltBrush) {
+                DeleteObject(state->panelAltBrush);
+                state->panelAltBrush = nullptr;
+            }
             if (state->uiFont) {
                 DeleteObject(state->uiFont);
                 state->uiFont = nullptr;
@@ -1509,6 +1723,14 @@ LRESULT CALLBACK MainWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             if (state->uiFontTitle) {
                 DeleteObject(state->uiFontTitle);
                 state->uiFontTitle = nullptr;
+            }
+            if (state->uiFontSecondary) {
+                DeleteObject(state->uiFontSecondary);
+                state->uiFontSecondary = nullptr;
+            }
+            if (state->uiFontTimer) {
+                DeleteObject(state->uiFontTimer);
+                state->uiFontTimer = nullptr;
             }
             delete state;
             SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
@@ -1542,7 +1764,7 @@ int APIENTRY wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int nCmdShow) {
 
     HWND hwnd = CreateWindowExW(0, kClassName, L"系统录音工具",
                                 WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
-                                CW_USEDEFAULT, CW_USEDEFAULT, 640, 700,
+                                CW_USEDEFAULT, CW_USEDEFAULT, 900, 560,
                                 nullptr, nullptr, hInstance, nullptr);
     if (!hwnd) {
         return 0;
