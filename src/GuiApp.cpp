@@ -30,6 +30,267 @@
 
 namespace {
 
+enum class UiLanguage { English, Chinese };
+
+struct UiStrings {
+    const wchar_t* appTitle;
+    const wchar_t* statusGroup;
+    const wchar_t* actionGroup;
+    const wchar_t* settingsGroup;
+    const wchar_t* playbackGroup;
+    const wchar_t* logGroup;
+    const wchar_t* statusIdle;
+    const wchar_t* statusStarting;
+    const wchar_t* statusRecording;
+    const wchar_t* statusPaused;
+    const wchar_t* statusRecovering;
+    const wchar_t* statusStopping;
+    const wchar_t* statusUnknown;
+    const wchar_t* startRecording;
+    const wchar_t* stopRecording;
+    const wchar_t* starting;
+    const wchar_t* stopping;
+    const wchar_t* pauseRecording;
+    const wchar_t* resumeRecording;
+    const wchar_t* outputLabel;
+    const wchar_t* browseFile;
+    const wchar_t* browseFolder;
+    const wchar_t* openFolder;
+    const wchar_t* formatLabel;
+    const wchar_t* bitrateLabel;
+    const wchar_t* playbackPlay;
+    const wchar_t* playbackPause;
+    const wchar_t* playbackStop;
+    const wchar_t* playbackVolume;
+    const wchar_t* menuFile;
+    const wchar_t* menuRecord;
+    const wchar_t* menuPlayback;
+    const wchar_t* menuSettings;
+    const wchar_t* menuView;
+    const wchar_t* menuHelp;
+    const wchar_t* menuNew;
+    const wchar_t* menuOpenFolder;
+    const wchar_t* menuExit;
+    const wchar_t* menuRecordStartStop;
+    const wchar_t* menuRecordPause;
+    const wchar_t* menuPlaybackPlay;
+    const wchar_t* menuPlaybackPause;
+    const wchar_t* menuPlaybackStop;
+    const wchar_t* menuFormat;
+    const wchar_t* menuBitrate;
+    const wchar_t* menuClearLog;
+    const wchar_t* menuAbout;
+    const wchar_t* browseFolderTitle;
+    const wchar_t* saveFileFilter;
+    const wchar_t* logPrefixUi;
+    const wchar_t* logPrefixPlayback;
+    const wchar_t* logOpenFolderEmpty;
+    const wchar_t* logOpenFolderFailed;
+    const wchar_t* logOpenFolderOk;
+    const wchar_t* logNoPlayable;
+    const wchar_t* logPlayerNotInit;
+    const wchar_t* logPlaybackOpenFailed;
+    const wchar_t* logPlaybackStart;
+    const wchar_t* logMp3Missing;
+    const wchar_t* logStartRecording;
+    const wchar_t* logStopRequest;
+    const wchar_t* logPaused;
+    const wchar_t* logResumed;
+    const wchar_t* logRecordingStopped;
+    const wchar_t* msgMp3MissingTitle;
+    const wchar_t* msgMp3MissingBody;
+    const wchar_t* aboutTitle;
+    const wchar_t* aboutText;
+    const wchar_t* aboutQrMissing;
+    const wchar_t* aboutOk;
+};
+
+const UiStrings& GetUiStrings(UiLanguage lang) {
+    static const UiStrings kEnglish{
+        L"System Recorder",
+        L"Recording Status",
+        L"Primary Actions",
+        L"Recording Settings",
+        L"Playback",
+        L"Log",
+        L"Idle",
+        L"Starting",
+        L"Recording",
+        L"Paused",
+        L"Reconnecting",
+        L"Stopping",
+        L"Unknown",
+        L"Start",
+        L"Stop",
+        L"Starting...",
+        L"Stopping...",
+        L"Pause",
+        L"Resume",
+        L"Output:",
+        L"Choose File",
+        L"Choose Folder",
+        L"Open Folder",
+        L"Format:",
+        L"Quality (kbps):",
+        L"Play",
+        L"Pause",
+        L"Stop",
+        L"Volume:",
+        L"File",
+        L"Record",
+        L"Playback",
+        L"Settings",
+        L"View",
+        L"Help",
+        L"New Recording\tCtrl+N",
+        L"Open Output Folder",
+        L"Exit",
+        L"Start/Stop Recording\tCtrl+R",
+        L"Pause/Resume Recording\tCtrl+P",
+        L"Play\tSpace",
+        L"Pause\tCtrl+Alt+P",
+        L"Stop\tCtrl+Space",
+        L"Output Format",
+        L"MP3 Bitrate",
+        L"Clear Log\tCtrl+L",
+        L"About\tF1",
+        L"Select Output Folder",
+        L"MP3 Files\0*.mp3\0WAV Files\0*.wav\0All Files\0*.*\0",
+        L"[UI] ",
+        L"[Playback] ",
+        L"Cannot open folder: path is empty.",
+        L"Failed to open folder: ",
+        L"Opened folder: ",
+        L"No playable recording found.",
+        L"Player not initialized.",
+        L"Failed to open playback file.",
+        L"Play recording: ",
+        L"MP3 encoder not found; switched to WAV output.",
+        L"Recording started.",
+        L"Stop requested.",
+        L"Paused.",
+        L"Resumed.",
+        L"Recording stopped.",
+        L"MP3 Encoder Missing",
+        L"libmp3lame.dll (or lame_enc.dll) not found. Only WAV output is available.\n"
+        L"Place the DLL next to the executable or set LAME_DLL_PATH.",
+        L"About",
+        L"System Recorder (Loopback Recorder GUI)\r\n"
+        L"  Version: v0.1.0\r\n"
+        L"  Purpose: Record system audio via WASAPI Loopback. Supports WAV/MP3, pause/resume, and playback.\r\n"
+        L"  Author: suspark\r\n"
+        L"\r\n"
+        L"Contact & updates:\r\n"
+        L"  WeChat Official Account (feedback): 边跑步边读书\r\n"
+        L"\r\n"
+        L"Privacy & security:\r\n"
+        L"  No drivers, no background service, no data collection; recordings are stored locally.\r\n"
+        L"\r\n"
+        L"MP3 encoder:\r\n"
+        L"  libmp3lame.dll (or lame_enc.dll) must be placed next to the executable.\r\n"
+        L"\r\n"
+        L"Project home:\r\n"
+        L"  https://github.com/suyaoyong/recorder\r\n"
+        L"\r\n"
+        L"Disclaimer:\r\n"
+        L"  For authorized recording only; comply with local laws.",
+        L"QR code not found.\r\nPlace wechat_qr.png\r\nin the assets folder.",
+        L"OK"
+    };
+    static const UiStrings kChinese{
+        L"系统录音工具",
+        L"录音状态",
+        L"主要操作",
+        L"录音设置",
+        L"回放检查",
+        L"日志",
+        L"空闲",
+        L"启动中",
+        L"录音中",
+        L"已暂停",
+        L"重连中",
+        L"停止中",
+        L"未知",
+        L"开始录音",
+        L"停止录音",
+        L"启动中...",
+        L"停止中...",
+        L"暂停录音",
+        L"继续录音",
+        L"输出文件：",
+        L"选择文件",
+        L"选择文件夹",
+        L"打开目录",
+        L"输出格式：",
+        L"音质 (kbps)：",
+        L"播放",
+        L"暂停",
+        L"停止",
+        L"音量：",
+        L"文件",
+        L"录音",
+        L"播放",
+        L"设置",
+        L"查看",
+        L"帮助",
+        L"新建录音\tCtrl+N",
+        L"打开音频保存目录",
+        L"退出",
+        L"开始录音/停止录音\tCtrl+R",
+        L"暂停/继续录音\tCtrl+P",
+        L"播放\tSpace",
+        L"暂停\tCtrl+Alt+P",
+        L"停止\tCtrl+Space",
+        L"输出格式",
+        L"MP3 比特率",
+        L"清空日志\tCtrl+L",
+        L"关于\tF1",
+        L"选择输出文件夹",
+        L"MP3 文件\0*.mp3\0WAV 文件\0*.wav\0所有文件\0*.*\0",
+        L"[界面] ",
+        L"[播放] ",
+        L"无法打开目录：路径为空。",
+        L"打开目录失败：",
+        L"已打开目录：",
+        L"未找到可播放的录音文件。",
+        L"播放器未初始化。",
+        L"打开播放文件失败。",
+        L"播放录音：",
+        L"未检测到 MP3 编码库，已切换为 WAV 输出。",
+        L"开始录音。",
+        L"请求停止。",
+        L"已暂停。",
+        L"已继续。",
+        L"录音已停止。",
+        L"缺少 MP3 编码库",
+        L"未检测到 libmp3lame.dll（或 lame_enc.dll），只能保存为 WAV 文件。\n"
+        L"请将 DLL 放到程序同目录，或设置环境变量 LAME_DLL_PATH。",
+        L"关于",
+        L"系统录音工具（Loopback Recorder GUI）\r\n"
+        L"  版本：v0.1.0\r\n"
+        L"  作用：基于 WASAPI Loopback 录制系统正在播放的音频，支持 WAV/MP3 输出、暂停/继续与回放检查。\r\n"
+        L"  作者：suspark\r\n"
+        L"\r\n"
+        L"交流与更新：\r\n"
+        L"  微信公众号（问题反馈）：边跑步边读书\r\n"
+        L"\r\n"
+        L"隐私与安全：\r\n"
+        L"  无驱动、无后台、不采集隐私数据；录音文件仅保存在本地。\r\n"
+        L"\r\n"
+        L"MP3 编码库：\r\n"
+        L"  libmp3lame.dll（或 lame_enc.dll）请与程序同目录。\r\n"
+        L"\r\n"
+        L"项目主页：\r\n"
+        L"  https://github.com/suyaoyong/recorder\r\n"
+        L"\r\n"
+        L"免责声明：\r\n"
+        L"  本工具仅用于用户授权的音频录制，请遵守当地法律法规。",
+        L"二维码未找到\r\n请放置 wechat_qr.png\r\n到 assets 目录",
+        L"确定"
+    };
+    return (lang == UiLanguage::Chinese) ? kChinese : kEnglish;
+}
+
 constexpr UINT WM_APP_LOG_MESSAGE = WM_APP + 1;
 constexpr UINT WM_APP_RECORDER_DONE = WM_APP + 2;
 constexpr UINT WM_APP_OUTPUT_PATH = WM_APP + 3;
@@ -56,7 +317,8 @@ enum ControlId : int {
     IDC_PLAYBACK_SEEK,
     IDC_PLAYBACK_TIME,
     IDC_PLAYBACK_VOLUME,
-    IDC_LOG_EDIT
+    IDC_LOG_EDIT,
+    IDC_LANGUAGE_TOGGLE
 };
 
 enum MenuId : int {
@@ -91,6 +353,7 @@ struct RecordingStatusParts {
 struct AboutDialogState {
     HWND parent = nullptr;
     HBITMAP qrBitmap = nullptr;
+    UiLanguage language = UiLanguage::English;
 };
 
 struct AppState {
@@ -123,6 +386,7 @@ struct AppState {
     HWND playbackVolumeLabel = nullptr;
     HWND logEdit = nullptr;
     HWND logGroup = nullptr;
+    HWND languageButton = nullptr;
     HWND statusBar = nullptr;
     HWND settingsGroup = nullptr;
     HMENU mainMenu = nullptr;
@@ -137,6 +401,7 @@ struct AppState {
     HBRUSH headerBrush = nullptr;
     HBRUSH panelBrush = nullptr;
     HBRUSH panelAltBrush = nullptr;
+    HBRUSH languageBrush = nullptr;
     COLORREF backgroundColor = RGB(0xEF, 0xF4, 0xF8);
     COLORREF headerColor = RGB(0xFF, 0xFF, 0xFF);
     COLORREF panelColor = RGB(0xFF, 0xFF, 0xFF);
@@ -159,6 +424,7 @@ struct AppState {
     std::atomic<bool> stopRequested{false};
     std::atomic<bool> pauseRequested{false};
     int defaultBitrate = 192;
+    UiLanguage language = UiLanguage::English;
     enum class RecorderState { Idle, Starting, Recording, Stopping, Recovering };
     RecorderState state = RecorderState::Idle;
     std::filesystem::path currentOutputPath;
@@ -181,7 +447,7 @@ public:
     ComGuard() {
         HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
         if (FAILED(hr)) {
-            throw std::runtime_error("COM 初始化失败");
+            throw std::runtime_error("COM initialization failed");
         }
     }
     ~ComGuard() {
@@ -221,6 +487,7 @@ std::wstring ToWide(const std::string& text) {
 int GetBitrateFromEdit(HWND edit, int fallback);
 void UpdateStatusDetails(AppState* state);
 void UpdateMenuForState(AppState* state);
+void UpdateControlsForState(AppState* state);
 void UpdateOutputExtension(AppState* state);
 std::filesystem::path ResolvePlayablePath(AppState* state);
 void PlayRecording(AppState* state);
@@ -232,6 +499,7 @@ void UpdatePlaybackTime(AppState* state, int64_t position100ns);
 std::wstring FormatPlaybackTime(int64_t position100ns, int64_t duration100ns);
 std::wstring BuildRecordingSummary(AppState* state);
 RecordingStatusParts BuildRecordingStatusParts(AppState* state);
+void BuildMainMenu(AppState* state);
 LRESULT CALLBACK AboutWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 std::wstring GetWindowTextString(HWND hwnd) {
@@ -244,12 +512,32 @@ std::wstring GetWindowTextString(HWND hwnd) {
     return buffer;
 }
 
+const UiStrings& GetUiStrings(const AppState* state) {
+    return GetUiStrings(state ? state->language : UiLanguage::English);
+}
+
 void AppendLog(HWND edit, const std::wstring& message) {
     const int len = GetWindowTextLengthW(edit);
     SendMessageW(edit, EM_SETSEL, len, len);
     std::wstring text = message;
     text += L"\r\n";
     SendMessageW(edit, EM_REPLACESEL, FALSE, reinterpret_cast<LPARAM>(text.c_str()));
+}
+
+void AppendUiLog(AppState* state, const std::wstring& message) {
+    if (!state) {
+        return;
+    }
+    const UiStrings& strings = GetUiStrings(state);
+    AppendLog(state->logEdit, std::wstring(strings.logPrefixUi) + message);
+}
+
+void AppendPlaybackLog(AppState* state, const std::wstring& message) {
+    if (!state) {
+        return;
+    }
+    const UiStrings& strings = GetUiStrings(state);
+    AppendLog(state->logEdit, std::wstring(strings.logPrefixPlayback) + message);
 }
 
 std::wstring FormatBytes(uintmax_t bytes) {
@@ -373,6 +661,50 @@ void UpdateMenuForState(AppState* state) {
                        mp3Selected ? bitrateId : IDM_SETTINGS_BITRATE_192, MF_BYCOMMAND);
     DrawMenuBar(state->hwnd);
 }
+
+void UpdateLanguageButton(AppState* state) {
+    if (!state || !state->languageButton) {
+        return;
+    }
+    const bool isEnglish = state->language == UiLanguage::English;
+    SetWindowTextW(state->languageButton, isEnglish ? L"中文" : L"English");
+}
+
+void UpdatePauseButtonLabel(AppState* state) {
+    if (!state || !state->pauseButton) {
+        return;
+    }
+    const UiStrings& strings = GetUiStrings(state);
+    const wchar_t* label = state->paused ? strings.resumeRecording : strings.pauseRecording;
+    SetWindowTextW(state->pauseButton, label);
+}
+
+void ApplyLanguage(AppState* state) {
+    if (!state) {
+        return;
+    }
+    const UiStrings& strings = GetUiStrings(state);
+    SetWindowTextW(state->hwnd, strings.appTitle);
+    if (state->statusGroup) SetWindowTextW(state->statusGroup, strings.statusGroup);
+    if (state->actionGroup) SetWindowTextW(state->actionGroup, strings.actionGroup);
+    if (state->settingsGroup) SetWindowTextW(state->settingsGroup, strings.settingsGroup);
+    if (state->playbackGroup) SetWindowTextW(state->playbackGroup, strings.playbackGroup);
+    if (state->logGroup) SetWindowTextW(state->logGroup, strings.logGroup);
+    if (state->outputLabel) SetWindowTextW(state->outputLabel, strings.outputLabel);
+    if (state->browseButton) SetWindowTextW(state->browseButton, strings.browseFile);
+    if (state->browseFolderButton) SetWindowTextW(state->browseFolderButton, strings.browseFolder);
+    if (state->openFolderButton) SetWindowTextW(state->openFolderButton, strings.openFolder);
+    if (state->formatLabel) SetWindowTextW(state->formatLabel, strings.formatLabel);
+    if (state->bitrateLabel) SetWindowTextW(state->bitrateLabel, strings.bitrateLabel);
+    if (state->playbackPlayButton) SetWindowTextW(state->playbackPlayButton, strings.playbackPlay);
+    if (state->playbackPauseButton) SetWindowTextW(state->playbackPauseButton, strings.playbackPause);
+    if (state->playbackStopButton) SetWindowTextW(state->playbackStopButton, strings.playbackStop);
+    if (state->playbackVolumeLabel) SetWindowTextW(state->playbackVolumeLabel, strings.playbackVolume);
+    UpdateLanguageButton(state);
+    UpdateControlsForState(state);
+    UpdateStatusText(state);
+    BuildMainMenu(state);
+}
 void UpdateControlsForState(AppState* state) {
     const bool playbackActive = state->playbackState == PlaybackState::Playing ||
         state->playbackState == PlaybackState::Opening;
@@ -399,16 +731,18 @@ void UpdateControlsForState(AppState* state) {
     EnableWindow(state->bitrateEdit, (canEdit && mp3Selected) ? TRUE : FALSE);
     EnableWindow(state->pauseButton, (state->state == AppState::RecorderState::Recording ||
                                       state->state == AppState::RecorderState::Recovering) ? TRUE : FALSE);
-    const wchar_t* startLabel = L"开始录音";
+    const UiStrings& strings = GetUiStrings(state);
+    const wchar_t* startLabel = strings.startRecording;
     if (state->state == AppState::RecorderState::Recording ||
         state->state == AppState::RecorderState::Recovering) {
-        startLabel = L"停止录音";
+        startLabel = strings.stopRecording;
     } else if (state->state == AppState::RecorderState::Starting) {
-        startLabel = L"启动中...";
+        startLabel = strings.starting;
     } else if (state->state == AppState::RecorderState::Stopping) {
-        startLabel = L"停止中...";
+        startLabel = strings.stopping;
     }
     SetWindowTextW(state->startButton, startLabel);
+    UpdatePauseButtonLabel(state);
     InvalidateRect(state->startButton, nullptr, TRUE);
     UpdatePlaybackControls(state);
     UpdateMenuForState(state);
@@ -440,6 +774,13 @@ void BuildMainMenu(AppState* state) {
     if (!state) {
         return;
     }
+    if (state->mainMenu) {
+        DestroyMenu(state->mainMenu);
+        state->mainMenu = nullptr;
+        state->settingsMenu = nullptr;
+        state->bitrateMenu = nullptr;
+    }
+    const UiStrings& strings = GetUiStrings(state);
     HMENU menu = CreateMenu();
     HMENU fileMenu = CreatePopupMenu();
     HMENU recordMenu = CreatePopupMenu();
@@ -450,17 +791,17 @@ void BuildMainMenu(AppState* state) {
     HMENU viewMenu = CreatePopupMenu();
     HMENU helpMenu = CreatePopupMenu();
 
-    AppendMenuW(fileMenu, MF_STRING, IDM_FILE_NEW, L"新建录音\tCtrl+N");
-    AppendMenuW(fileMenu, MF_STRING, IDM_FILE_OPEN_FOLDER, L"打开音频保存目录");
+    AppendMenuW(fileMenu, MF_STRING, IDM_FILE_NEW, strings.menuNew);
+    AppendMenuW(fileMenu, MF_STRING, IDM_FILE_OPEN_FOLDER, strings.menuOpenFolder);
     AppendMenuW(fileMenu, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(fileMenu, MF_STRING, IDM_FILE_EXIT, L"退出");
+    AppendMenuW(fileMenu, MF_STRING, IDM_FILE_EXIT, strings.menuExit);
 
-    AppendMenuW(recordMenu, MF_STRING, IDM_RECORD_START_STOP, L"开始录音/停止录音\tCtrl+R");
-    AppendMenuW(recordMenu, MF_STRING, IDM_RECORD_PAUSE, L"暂停/继续录音\tCtrl+P");
+    AppendMenuW(recordMenu, MF_STRING, IDM_RECORD_START_STOP, strings.menuRecordStartStop);
+    AppendMenuW(recordMenu, MF_STRING, IDM_RECORD_PAUSE, strings.menuRecordPause);
 
-    AppendMenuW(playbackMenu, MF_STRING, IDM_PLAYBACK_PLAY, L"播放\tSpace");
-    AppendMenuW(playbackMenu, MF_STRING, IDM_PLAYBACK_PAUSE, L"暂停\tCtrl+Alt+P");
-    AppendMenuW(playbackMenu, MF_STRING, IDM_PLAYBACK_STOP, L"停止\tCtrl+Space");
+    AppendMenuW(playbackMenu, MF_STRING, IDM_PLAYBACK_PLAY, strings.menuPlaybackPlay);
+    AppendMenuW(playbackMenu, MF_STRING, IDM_PLAYBACK_PAUSE, strings.menuPlaybackPause);
+    AppendMenuW(playbackMenu, MF_STRING, IDM_PLAYBACK_STOP, strings.menuPlaybackStop);
 
     AppendMenuW(formatMenu, MF_STRING, IDM_SETTINGS_FORMAT_WAV, L"WAV");
     AppendMenuW(formatMenu, MF_STRING, IDM_SETTINGS_FORMAT_MP3, L"MP3");
@@ -470,19 +811,19 @@ void BuildMainMenu(AppState* state) {
     AppendMenuW(bitrateMenu, MF_STRING, IDM_SETTINGS_BITRATE_256, L"256 kbps");
     AppendMenuW(bitrateMenu, MF_STRING, IDM_SETTINGS_BITRATE_320, L"320 kbps");
 
-    AppendMenuW(settingsMenu, MF_POPUP, reinterpret_cast<UINT_PTR>(formatMenu), L"输出格式");
-    AppendMenuW(settingsMenu, MF_POPUP, reinterpret_cast<UINT_PTR>(bitrateMenu), L"MP3 比特率");
+    AppendMenuW(settingsMenu, MF_POPUP, reinterpret_cast<UINT_PTR>(formatMenu), strings.menuFormat);
+    AppendMenuW(settingsMenu, MF_POPUP, reinterpret_cast<UINT_PTR>(bitrateMenu), strings.menuBitrate);
 
-    AppendMenuW(viewMenu, MF_STRING, IDM_VIEW_CLEAR_LOG, L"清空日志\tCtrl+L");
+    AppendMenuW(viewMenu, MF_STRING, IDM_VIEW_CLEAR_LOG, strings.menuClearLog);
 
-    AppendMenuW(helpMenu, MF_STRING, IDM_HELP_ABOUT, L"关于\tF1");
+    AppendMenuW(helpMenu, MF_STRING, IDM_HELP_ABOUT, strings.menuAbout);
 
-    AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(fileMenu), L"  文件  ");
-    AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(recordMenu), L"  录音  ");
-    AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(playbackMenu), L"  播放  ");
-    AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(settingsMenu), L"  设置  ");
-    AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(viewMenu), L"  查看  ");
-    AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(helpMenu), L"  帮助  ");
+    AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(fileMenu), strings.menuFile);
+    AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(recordMenu), strings.menuRecord);
+    AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(playbackMenu), strings.menuPlayback);
+    AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(settingsMenu), strings.menuSettings);
+    AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(viewMenu), strings.menuView);
+    AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(helpMenu), strings.menuHelp);
 
     state->mainMenu = menu;
     state->settingsMenu = settingsMenu;
@@ -491,10 +832,10 @@ void BuildMainMenu(AppState* state) {
     UpdateMenuForState(state);
 }
 
-std::filesystem::path BrowseForFolder(HWND owner) {
+std::filesystem::path BrowseForFolder(HWND owner, const UiStrings& strings) {
     BROWSEINFOW bi{};
     bi.hwndOwner = owner;
-    bi.lpszTitle = L"选择输出文件夹";
+    bi.lpszTitle = strings.browseFolderTitle;
     bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
     PIDLIST_ABSOLUTE pidl = SHBrowseForFolderW(&bi);
     if (!pidl) {
@@ -650,10 +991,11 @@ bool IsMp3DllAvailable() {
 void BrowseForOutputPath(AppState* state) {
     wchar_t buffer[MAX_PATH] = {};
     GetWindowTextW(state->outputEdit, buffer, std::size(buffer));
+    const UiStrings& strings = GetUiStrings(state);
     OPENFILENAMEW ofn{};
     ofn.lStructSize = sizeof(ofn);
     ofn.hwndOwner = state->hwnd;
-    ofn.lpstrFilter = L"MP3 文件\0*.mp3\0WAV 文件\0*.wav\0所有文件\0*.*\0";
+    ofn.lpstrFilter = strings.saveFileFilter;
     ofn.lpstrFile = buffer;
     ofn.nMaxFile = static_cast<DWORD>(std::size(buffer));
     ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST;
@@ -671,7 +1013,8 @@ void BrowseForOutputPath(AppState* state) {
 }
 
 void BrowseForOutputFolder(AppState* state) {
-    auto folder = BrowseForFolder(state->hwnd);
+    const UiStrings& strings = GetUiStrings(state);
+    auto folder = BrowseForFolder(state->hwnd, strings);
     if (folder.empty()) {
         return;
     }
@@ -699,14 +1042,14 @@ void OpenOutputFolder(AppState* state) {
         target = GetDefaultOutputFolder();
     }
     if (target.empty()) {
-        AppendLog(state->logEdit, L"[界面] 无法打开目录：路径为空。");
+        AppendUiLog(state, GetUiStrings(state).logOpenFolderEmpty);
         return;
     }
     HINSTANCE res = ShellExecuteW(nullptr, L"open", target.wstring().c_str(), nullptr, nullptr, SW_SHOWNORMAL);
     if (reinterpret_cast<INT_PTR>(res) <= 32) {
-        AppendLog(state->logEdit, L"[界面] 打开目录失败：" + target.wstring());
+        AppendUiLog(state, std::wstring(GetUiStrings(state).logOpenFolderFailed) + target.wstring());
     } else {
-        AppendLog(state->logEdit, L"[界面] 已打开目录：" + target.wstring());
+        AppendUiLog(state, std::wstring(GetUiStrings(state).logOpenFolderOk) + target.wstring());
     }
 }
 
@@ -740,23 +1083,23 @@ void PlayRecording(AppState* state) {
     }
     auto playable = ResolvePlayablePath(state);
     if (playable.empty()) {
-        AppendLog(state->logEdit, L"[界面] 未找到可播放的录音文件。");
+        AppendUiLog(state, GetUiStrings(state).logNoPlayable);
         return;
     }
     if (!state->player) {
-        AppendLog(state->logEdit, L"[界面] 播放器未初始化。");
+        AppendUiLog(state, GetUiStrings(state).logPlayerNotInit);
         return;
     }
     const bool shouldOpen = state->currentPlaybackPath.empty() || state->currentPlaybackPath != playable;
     if (shouldOpen) {
         state->currentPlaybackPath = playable;
         if (!state->player->OpenFile(playable)) {
-            AppendLog(state->logEdit, L"[界面] 打开播放文件失败。");
+            AppendUiLog(state, GetUiStrings(state).logPlaybackOpenFailed);
             return;
         }
     }
     state->player->Play();
-    AppendLog(state->logEdit, L"[界面] 播放录音：" + playable.wstring());
+    AppendUiLog(state, std::wstring(GetUiStrings(state).logPlaybackStart) + playable.wstring());
 }
 
 void PausePlayback(AppState* state) {
@@ -855,25 +1198,26 @@ RecordingStatusParts BuildRecordingStatusParts(AppState* state) {
     if (!state) {
         return parts;
     }
+    const UiStrings& strings = GetUiStrings(state);
     std::wstring status;
     switch (state->state) {
     case AppState::RecorderState::Idle:
-        status = L"空闲";
+        status = strings.statusIdle;
         break;
     case AppState::RecorderState::Starting:
-        status = L"启动中";
+        status = strings.statusStarting;
         break;
     case AppState::RecorderState::Recording:
-        status = state->paused ? L"已暂停" : L"录音中";
+        status = state->paused ? strings.statusPaused : strings.statusRecording;
         break;
     case AppState::RecorderState::Recovering:
-        status = L"重连中";
+        status = strings.statusRecovering;
         break;
     case AppState::RecorderState::Stopping:
-        status = L"停止中";
+        status = strings.statusStopping;
         break;
     default:
-        status = L"未知";
+        status = strings.statusUnknown;
         break;
     }
     parts.status = status;
@@ -992,8 +1336,9 @@ void RunRecorder(AppState* state,
     threadLogger.SetSink([hwnd = state->hwnd](LogLevel level, const std::wstring& line) {
         PostLogMessage(hwnd, line, level);
     });
+    const bool isEnglish = state && state->language == UiLanguage::English;
     try {
-        threadLogger.Info(L"录音器启动中。");
+        threadLogger.Info(isEnglish ? L"Recorder starting." : L"录音器启动中。");
         ComGuard com;
         constexpr int kMaxReconnectAttempts = 3;
         constexpr int kReconnectDelayMs = 1500;
@@ -1006,10 +1351,10 @@ void RunRecorder(AppState* state,
             DeviceEnumerator enumerator;
             auto device = enumerator.GetDefaultRenderDevice();
             if (!device) {
-                throw std::runtime_error("无法获取播放设备");
+                throw std::runtime_error(isEnglish ? "Unable to get playback device" : "无法获取播放设备");
             }
             std::wstring friendly = DeviceEnumerator::GetFriendlyName(device.Get());
-            threadLogger.Info(L"已选择播放设备：" + friendly);
+            threadLogger.Info((isEnglish ? L"Selected playback device: " : L"已选择播放设备：") + friendly);
             PostDeviceNameUpdate(state->hwnd, friendly);
 
             RecorderConfig config;
@@ -1037,29 +1382,38 @@ void RunRecorder(AppState* state,
                 return state->pauseRequested.load();
             };
 
-            threadLogger.Info(L"开始录制系统音频到 " + config.outputPath.wstring());
+            threadLogger.Info((isEnglish ? L"Recording system audio to " : L"开始录制系统音频到 ") + config.outputPath.wstring());
             RecorderStats stats = recorder.Record(config, controls);
-            threadLogger.Info(L"录音结束。分段数：" + std::to_wstring(stats.segmentsWritten));
+            threadLogger.Info((isEnglish ? L"Recording finished. Segments: " : L"录音结束。分段数：") +
+                              std::to_wstring(stats.segmentsWritten));
 
             if (stats.deviceInvalidated && !state->stopRequested.load()) {
                 if (attempts >= kMaxReconnectAttempts) {
-                    threadLogger.Warn(L"播放设备断开次数过多，已停止。");
+                    threadLogger.Warn(isEnglish ? L"Playback device disconnected too many times; stopped."
+                                                : L"播放设备断开次数过多，已停止。");
                     break;
                 }
                 ++attempts;
                 PostStateUpdate(state->hwnd, AppState::RecorderState::Recovering);
-                threadLogger.Warn(L"播放设备断开，将在 " + std::to_wstring(kReconnectDelayMs) +
-                                  L" ms 后重试（第 " + std::to_wstring(attempts) + L"/" +
-                                  std::to_wstring(kMaxReconnectAttempts) + L" 次）。");
+                if (isEnglish) {
+                    threadLogger.Warn(L"Playback device disconnected; retrying in " +
+                                      std::to_wstring(kReconnectDelayMs) + L" ms (" +
+                                      std::to_wstring(attempts) + L"/" +
+                                      std::to_wstring(kMaxReconnectAttempts) + L").");
+                } else {
+                    threadLogger.Warn(L"播放设备断开，将在 " + std::to_wstring(kReconnectDelayMs) +
+                                      L" ms 后重试（第 " + std::to_wstring(attempts) + L"/" +
+                                      std::to_wstring(kMaxReconnectAttempts) + L" 次）。");
+                }
                 std::this_thread::sleep_for(std::chrono::milliseconds(kReconnectDelayMs));
                 continue;
             }
 
             finished = true;
-            threadLogger.Info(L"录音会话已结束。");
+            threadLogger.Info(isEnglish ? L"Recording session ended." : L"录音会话已结束。");
         }
     } catch (const std::exception& ex) {
-        threadLogger.Error(L"致命错误：" + ToWide(ex.what()));
+        threadLogger.Error((isEnglish ? L"Fatal error: " : L"致命错误：") + ToWide(ex.what()));
     }
     PostMessageW(state->hwnd, WM_APP_RECORDER_DONE, 0, 0);
 }
@@ -1092,11 +1446,11 @@ void StartRecording(AppState* state) {
     bool mp3Enabled = state->formatCombo &&
         SendMessageW(state->formatCombo, CB_GETCURSEL, 0, 0) == 1;
     if (mp3Enabled && !IsMp3DllAvailable()) {
+        const UiStrings& strings = GetUiStrings(state);
         MessageBoxW(state->hwnd,
-                    L"未检测到 libmp3lame.dll（或 lame_enc.dll），只能保存为 WAV 文件。\n"
-                    L"请将 DLL 放到程序同目录，或设置环境变量 LAME_DLL_PATH。",
-                    L"缺少 MP3 编码库", MB_OK | MB_ICONWARNING);
-        AppendLog(state->logEdit, L"[界面] 未检测到 MP3 编码库，已切换为 WAV 输出。");
+                    strings.msgMp3MissingBody,
+                    strings.msgMp3MissingTitle, MB_OK | MB_ICONWARNING);
+        AppendUiLog(state, GetUiStrings(state).logMp3Missing);
         SetFormatSelection(state, false);
         mp3Enabled = false;
     }
@@ -1114,7 +1468,7 @@ void StartRecording(AppState* state) {
     state->startTime = std::chrono::steady_clock::now();
     state->state = AppState::RecorderState::Starting;
     UpdateControlsForState(state);
-    AppendLog(state->logEdit, L"[界面] 开始录音。");
+    AppendUiLog(state, GetUiStrings(state).logStartRecording);
 
     state->worker = std::thread([state, outputPath, mp3Enabled, bitrate]() {
         RunRecorder(state, outputPath, mp3Enabled, static_cast<uint32_t>(bitrate));
@@ -1130,7 +1484,7 @@ void StopRecording(AppState* state) {
         state->state = AppState::RecorderState::Stopping;
         UpdateControlsForState(state);
     }
-    AppendLog(state->logEdit, L"[界面] 请求停止。");
+    AppendUiLog(state, GetUiStrings(state).logStopRequest);
 }
 
 void TogglePause(AppState* state) {
@@ -1143,13 +1497,13 @@ void TogglePause(AppState* state) {
     state->paused = newPaused;
     if (newPaused) {
         state->pauseStart = std::chrono::steady_clock::now();
-        SetWindowTextW(state->pauseButton, L"继续录音");
-        AppendLog(state->logEdit, L"[界面] 已暂停。");
+        UpdatePauseButtonLabel(state);
+        AppendUiLog(state, GetUiStrings(state).logPaused);
     } else {
         state->pausedTotal += std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - state->pauseStart);
-        SetWindowTextW(state->pauseButton, L"暂停录音");
-        AppendLog(state->logEdit, L"[界面] 已继续。");
+        UpdatePauseButtonLabel(state);
+        AppendUiLog(state, GetUiStrings(state).logResumed);
     }
     UpdateStatusText(state);
     if (state->startButton) {
@@ -1165,10 +1519,10 @@ void CleanupWorker(AppState* state) {
     state->pauseRequested.store(false);
     state->paused = false;
     state->pausedTotal = std::chrono::milliseconds(0);
-    SetWindowTextW(state->pauseButton, L"暂停录音");
+    UpdatePauseButtonLabel(state);
     state->state = AppState::RecorderState::Idle;
     UpdateControlsForState(state);
-    AppendLog(state->logEdit, L"[界面] 录音已停止。");
+    AppendUiLog(state, GetUiStrings(state).logRecordingStopped);
     UpdateStatusText(state);
 }
 
@@ -1206,19 +1560,32 @@ void CreateChildControls(HWND hwnd, AppState* state) {
     state->headerBrush = CreateSolidBrush(state->headerColor);
     state->panelBrush = CreateSolidBrush(state->panelColor);
     state->panelAltBrush = CreateSolidBrush(state->panelAltColor);
+    state->languageBrush = CreateSolidBrush(state->primaryColor);
     HFONT font = state->uiFont;
+    const UiStrings& strings = GetUiStrings(state);
 
     const int groupLeft = padding;
-    int y = padding;
+    const int languageButtonWidth = 88;
+    const int languageButtonHeight = 24;
+    const int topPadding = padding + languageButtonHeight + 8;
+    int y = topPadding;
 
     state->headerLabel = nullptr;
 
     const int statusGroupHeight = 80;
-    state->statusGroup = CreateWindowW(L"BUTTON", L"录音状态", WS_VISIBLE | WS_CHILD | BS_GROUPBOX,
+    state->statusGroup = CreateWindowW(L"BUTTON", strings.statusGroup, WS_VISIBLE | WS_CHILD | BS_GROUPBOX,
                                      groupLeft, y, contentWidth, statusGroupHeight, hwnd, nullptr, nullptr, nullptr);
     SetControlFont(state->statusGroup, state->uiFontSecondary);
 
-    state->statusStateLabel = CreateWindowW(L"STATIC", L"空闲", WS_VISIBLE | WS_CHILD,
+    state->languageButton = CreateWindowW(L"BUTTON", L"",
+                                          WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON | BS_FLAT,
+                                          groupLeft + contentWidth - languageButtonWidth - 12, y - languageButtonHeight - 6,
+                                          languageButtonWidth, languageButtonHeight,
+                                          hwnd, reinterpret_cast<HMENU>(IDC_LANGUAGE_TOGGLE), nullptr, nullptr);
+    SetControlFont(state->languageButton, font);
+    UpdateLanguageButton(state);
+
+    state->statusStateLabel = CreateWindowW(L"STATIC", strings.statusIdle, WS_VISIBLE | WS_CHILD,
                                             groupLeft + 16, y + 20, contentWidth - 32, labelHeight,
                                             hwnd, nullptr, nullptr, nullptr);
     SetControlFont(state->statusStateLabel, state->uiFontTitle);
@@ -1235,7 +1602,7 @@ void CreateChildControls(HWND hwnd, AppState* state) {
 
     y += statusGroupHeight + 10;
     const int actionGroupHeight = 92;
-    state->actionGroup = CreateWindowW(L"BUTTON", L"主要操作", WS_VISIBLE | WS_CHILD | BS_GROUPBOX,
+    state->actionGroup = CreateWindowW(L"BUTTON", strings.actionGroup, WS_VISIBLE | WS_CHILD | BS_GROUPBOX,
                                      groupLeft, y, contentWidth, actionGroupHeight, hwnd, nullptr, nullptr, nullptr);
     SetControlFont(state->actionGroup, state->uiFontSecondary);
 
@@ -1243,13 +1610,13 @@ void CreateChildControls(HWND hwnd, AppState* state) {
     const int actionSpacing = 12;
     const int actionRowWidth = actionButtonWidth * 2 + actionSpacing;
     const int actionX = groupLeft + (contentWidth - actionRowWidth) / 2;
-    state->startButton = CreateWindowW(L"BUTTON", L"开始录音",
+    state->startButton = CreateWindowW(L"BUTTON", strings.startRecording,
                                        WS_VISIBLE | WS_CHILD | BS_OWNERDRAW,
                                        actionX, actionRowY, actionButtonWidth, actionButtonHeight,
                                        hwnd, reinterpret_cast<HMENU>(IDC_START_BUTTON), nullptr, nullptr);
     SetControlFont(state->startButton, state->uiFontBold);
 
-    state->pauseButton = CreateWindowW(L"BUTTON", L"暂停录音",
+    state->pauseButton = CreateWindowW(L"BUTTON", strings.pauseRecording,
                                        WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
                                        actionX + actionButtonWidth + actionSpacing, actionRowY,
                                        actionButtonWidth, actionButtonHeight,
@@ -1261,12 +1628,12 @@ void CreateChildControls(HWND hwnd, AppState* state) {
 
     y += actionGroupHeight + 10;
     const int settingsGroupHeight = 130;
-    state->settingsGroup = CreateWindowW(L"BUTTON", L"录音设置", WS_VISIBLE | WS_CHILD | BS_GROUPBOX,
+    state->settingsGroup = CreateWindowW(L"BUTTON", strings.settingsGroup, WS_VISIBLE | WS_CHILD | BS_GROUPBOX,
                                       groupLeft, y, contentWidth, settingsGroupHeight, hwnd, nullptr, nullptr, nullptr);
     SetControlFont(state->settingsGroup, state->uiFontSecondary);
 
     const int outputLabelY = y + 24;
-    state->outputLabel = CreateWindowW(L"STATIC", L"输出文件：", WS_VISIBLE | WS_CHILD,
+    state->outputLabel = CreateWindowW(L"STATIC", strings.outputLabel, WS_VISIBLE | WS_CHILD,
                                      groupLeft + 12, outputLabelY, 72, labelHeight, hwnd, nullptr, nullptr, nullptr);
     SetControlFont(state->outputLabel, state->uiFontSecondary);
     state->outputEdit = CreateWindowExW(0, L"EDIT", DefaultOutputPath().wstring().c_str(),
@@ -1277,26 +1644,26 @@ void CreateChildControls(HWND hwnd, AppState* state) {
 
     const int buttonRowY = y + 54;
     const int smallButtonWidth = 110;
-    state->browseButton = CreateWindowW(L"BUTTON", L"选择文件",
+    state->browseButton = CreateWindowW(L"BUTTON", strings.browseFile,
                                       WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
                                       groupLeft + 12, buttonRowY, smallButtonWidth, buttonHeight,
                                       hwnd, reinterpret_cast<HMENU>(IDC_BROWSE_BUTTON), nullptr, nullptr);
     SetControlFont(state->browseButton, font);
 
-    state->browseFolderButton = CreateWindowW(L"BUTTON", L"选择文件夹",
+    state->browseFolderButton = CreateWindowW(L"BUTTON", strings.browseFolder,
                                             WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
                                             groupLeft + 12 + smallButtonWidth + 8, buttonRowY, smallButtonWidth, buttonHeight,
                                             hwnd, reinterpret_cast<HMENU>(IDC_BROWSE_FOLDER), nullptr, nullptr);
     SetControlFont(state->browseFolderButton, font);
 
-    state->openFolderButton = CreateWindowW(L"BUTTON", L"打开目录",
+    state->openFolderButton = CreateWindowW(L"BUTTON", strings.openFolder,
                                           WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
                                           groupLeft + 12 + (smallButtonWidth + 8) * 2, buttonRowY, smallButtonWidth, buttonHeight,
                                           hwnd, reinterpret_cast<HMENU>(IDC_OPEN_FOLDER), nullptr, nullptr);
     SetControlFont(state->openFolderButton, font);
 
     const int formatRowY = y + 86;
-    state->formatLabel = CreateWindowW(L"STATIC", L"输出格式：", WS_VISIBLE | WS_CHILD,
+    state->formatLabel = CreateWindowW(L"STATIC", strings.formatLabel, WS_VISIBLE | WS_CHILD,
                                      groupLeft + 12, formatRowY, 72, labelHeight, hwnd, nullptr, nullptr, nullptr);
     SetControlFont(state->formatLabel, state->uiFontSecondary);
     state->formatCombo = CreateWindowW(L"COMBOBOX", L"", WS_VISIBLE | WS_CHILD | CBS_DROPDOWNLIST,
@@ -1307,7 +1674,7 @@ void CreateChildControls(HWND hwnd, AppState* state) {
     SendMessageW(state->formatCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"MP3"));
     SendMessageW(state->formatCombo, CB_SETCURSEL, 1, 0);
 
-    state->bitrateLabel = CreateWindowW(L"STATIC", L"音质 (kbps)：", WS_VISIBLE | WS_CHILD,
+    state->bitrateLabel = CreateWindowW(L"STATIC", strings.bitrateLabel, WS_VISIBLE | WS_CHILD,
                                       groupLeft + 230, formatRowY, 90, labelHeight, hwnd, nullptr, nullptr, nullptr);
     SetControlFont(state->bitrateLabel, state->uiFontSecondary);
     state->bitrateEdit = CreateWindowExW(0, L"EDIT", L"192",
@@ -1319,26 +1686,26 @@ void CreateChildControls(HWND hwnd, AppState* state) {
 
     y += settingsGroupHeight + 10;
     const int playbackGroupHeight = 90;
-    state->playbackGroup = CreateWindowW(L"BUTTON", L"回放检查", WS_VISIBLE | WS_CHILD | BS_GROUPBOX,
+    state->playbackGroup = CreateWindowW(L"BUTTON", strings.playbackGroup, WS_VISIBLE | WS_CHILD | BS_GROUPBOX,
                                        groupLeft, y, contentWidth, playbackGroupHeight, hwnd, nullptr, nullptr, nullptr);
     SetControlFont(state->playbackGroup, state->uiFontSecondary);
 
     const int playbackRowY = y + 24;
-    state->playbackPlayButton = CreateWindowW(L"BUTTON", L"播放",
+    state->playbackPlayButton = CreateWindowW(L"BUTTON", strings.playbackPlay,
                                               WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
                                               groupLeft + 12, playbackRowY,
                                               90, buttonHeight,
                                               hwnd, reinterpret_cast<HMENU>(IDC_PLAYBACK_PLAY), nullptr, nullptr);
     SetControlFont(state->playbackPlayButton, font);
 
-    state->playbackPauseButton = CreateWindowW(L"BUTTON", L"暂停",
+    state->playbackPauseButton = CreateWindowW(L"BUTTON", strings.playbackPause,
                                                WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
                                                groupLeft + 110, playbackRowY,
                                                90, buttonHeight,
                                                hwnd, reinterpret_cast<HMENU>(IDC_PLAYBACK_PAUSE), nullptr, nullptr);
     SetControlFont(state->playbackPauseButton, font);
 
-    state->playbackStopButton = CreateWindowW(L"BUTTON", L"停止",
+    state->playbackStopButton = CreateWindowW(L"BUTTON", strings.playbackStop,
                                               WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
                                               groupLeft + 208, playbackRowY,
                                               90, buttonHeight,
@@ -1358,7 +1725,7 @@ void CreateChildControls(HWND hwnd, AppState* state) {
                                              hwnd, reinterpret_cast<HMENU>(IDC_PLAYBACK_TIME), nullptr, nullptr);
     SetControlFont(state->playbackTimeLabel, state->uiFontSecondary);
 
-    state->playbackVolumeLabel = CreateWindowW(L"STATIC", L"音量：", WS_VISIBLE | WS_CHILD,
+    state->playbackVolumeLabel = CreateWindowW(L"STATIC", strings.playbackVolume, WS_VISIBLE | WS_CHILD,
                                      groupLeft + 12, playbackRowY + 34, 48, labelHeight,
                                      hwnd, nullptr, nullptr, nullptr);
     SetControlFont(state->playbackVolumeLabel, state->uiFontSecondary);
@@ -1374,7 +1741,7 @@ void CreateChildControls(HWND hwnd, AppState* state) {
     y += playbackGroupHeight + 10;
     const int logGroupHeight = 84;
     const int logEditHeight = 60;
-    state->logGroup = CreateWindowW(L"BUTTON", L"日志", WS_VISIBLE | WS_CHILD | BS_GROUPBOX,
+    state->logGroup = CreateWindowW(L"BUTTON", strings.logGroup, WS_VISIBLE | WS_CHILD | BS_GROUPBOX,
                                   groupLeft, y, contentWidth, logGroupHeight, hwnd, nullptr, nullptr, nullptr);
     SetControlFont(state->logGroup, state->uiFontSecondary);
 
@@ -1418,6 +1785,11 @@ void ShowAboutDialog(HWND parent) {
 
     AboutDialogState* aboutState = new AboutDialogState{};
     aboutState->parent = parent;
+    AppState* state = reinterpret_cast<AppState*>(GetWindowLongPtrW(parent, GWLP_USERDATA));
+    const UiStrings& strings = GetUiStrings(state);
+    if (state) {
+        aboutState->language = state->language;
+    }
 
     const int width = 600;
     const int height = 420;
@@ -1431,7 +1803,7 @@ void ShowAboutDialog(HWND parent) {
     const int x = parentRect.left + ((parentRect.right - parentRect.left) - windowWidth) / 2;
     const int y = parentRect.top + ((parentRect.bottom - parentRect.top) - windowHeight) / 2;
 
-    HWND aboutWindow = CreateWindowExW(WS_EX_DLGMODALFRAME, kAboutClassName, L"关于",
+    HWND aboutWindow = CreateWindowExW(WS_EX_DLGMODALFRAME, kAboutClassName, strings.aboutTitle,
                                        WS_CAPTION | WS_SYSMENU | WS_POPUP,
                                        x, y, windowWidth, windowHeight,
                                        parent, nullptr, GetModuleHandleW(nullptr), aboutState);
@@ -1522,6 +1894,10 @@ LRESULT CALLBACK MainWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 UpdateStatusDetails(state);
                 UpdateMenuForState(state);
             }
+            return 0;
+        case IDC_LANGUAGE_TOGGLE:
+            state->language = (state->language == UiLanguage::English) ? UiLanguage::Chinese : UiLanguage::English;
+            ApplyLanguage(state);
             return 0;
         case IDC_OUTPUT_EDIT:
             if (HIWORD(wParam) == EN_CHANGE) {
@@ -1697,7 +2073,7 @@ LRESULT CALLBACK MainWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
         if (state) {
             auto payload = reinterpret_cast<std::wstring*>(lParam);
             if (payload) {
-                AppendLog(state->logEdit, L"[播放] " + *payload);
+                AppendPlaybackLog(state, *payload);
                 delete payload;
             }
             UpdateControlsForState(state);
@@ -1811,6 +2187,11 @@ LRESULT CALLBACK MainWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
         if (state) {
             HDC hdc = reinterpret_cast<HDC>(wParam);
             HWND target = reinterpret_cast<HWND>(lParam);
+            if (target == state->languageButton) {
+                SetTextColor(hdc, RGB(0xFF, 0xFF, 0xFF));
+                SetBkColor(hdc, state->primaryColor);
+                return reinterpret_cast<INT_PTR>(state->languageBrush ? state->languageBrush : state->backgroundBrush);
+            }
             SetTextColor(hdc, state->textSecondary);
             if (target == state->statusGroup ||
                 target == state->actionGroup ||
@@ -1914,6 +2295,10 @@ LRESULT CALLBACK MainWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 DeleteObject(state->panelAltBrush);
                 state->panelAltBrush = nullptr;
             }
+            if (state->languageBrush) {
+                DeleteObject(state->languageBrush);
+                state->languageBrush = nullptr;
+            }
             if (state->uiFont) {
                 DeleteObject(state->uiFont);
                 state->uiFont = nullptr;
@@ -1954,6 +2339,7 @@ LRESULT CALLBACK AboutWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
         auto* create = reinterpret_cast<LPCREATESTRUCTW>(lParam);
         aboutState = reinterpret_cast<AboutDialogState*>(create->lpCreateParams);
         SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(aboutState));
+        const UiStrings& strings = GetUiStrings(aboutState ? aboutState->language : UiLanguage::English);
 
         const int padding = 16;
         const int qrSize = 150;
@@ -1962,26 +2348,7 @@ LRESULT CALLBACK AboutWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
         const int textWidth = 320;
         const int qrX = padding + textWidth + 8;
 
-        std::wstring aboutText =
-            L"系统录音工具（Loopback Recorder GUI）\r\n"
-            L"  版本：v0.1.0\r\n"
-            L"  作用：基于 WASAPI Loopback 录制系统正在播放的音频，支持 WAV/MP3 输出、暂停/继续与回放检查。\r\n"
-            L"  作者：suspark\r\n"
-            L"\r\n"
-            L"交流与更新：\r\n"
-            L"  微信公众号（问题反馈）：边跑步边读书\r\n"
-            L"\r\n"
-            L"隐私与安全：\r\n"
-            L"  无驱动、无后台、不采集隐私数据；录音文件仅保存在本地。\r\n"
-            L"\r\n"
-            L"MP3 编码库：\r\n"
-            L"  libmp3lame.dll（或 lame_enc.dll）请与程序同目录。\r\n"
-            L"\r\n"
-            L"项目主页：\r\n"
-            L"  https://github.com/suyaoyong/recorder\r\n"
-            L"\r\n"
-            L"免责声明：\r\n"
-            L"  本工具仅用于用户授权的音频录制，请遵守当地法律法规。";
+        std::wstring aboutText = strings.aboutText;
         HWND text = CreateWindowW(L"STATIC", aboutText.c_str(),
                                   WS_CHILD | WS_VISIBLE | SS_LEFT | SS_NOPREFIX,
                                   padding, padding, textWidth, height - padding * 3 - 36,
@@ -2000,7 +2367,7 @@ LRESULT CALLBACK AboutWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
                                     qrSize, qrSize, hwnd, nullptr, nullptr, nullptr);
             SendMessageW(qr, STM_SETIMAGE, IMAGE_BITMAP, reinterpret_cast<LPARAM>(aboutState->qrBitmap));
         } else {
-            std::wstring placeholder = L"二维码未找到\r\n请放置 wechat_qr.png\r\n到 assets 目录";
+            std::wstring placeholder = strings.aboutQrMissing;
             HWND qrText = CreateWindowW(L"STATIC", placeholder.c_str(),
                                         WS_CHILD | WS_VISIBLE | SS_LEFT | SS_NOPREFIX,
                                         qrX, padding + 10,
@@ -2010,7 +2377,7 @@ LRESULT CALLBACK AboutWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
             }
         }
 
-        HWND okButton = CreateWindowW(L"BUTTON", L"确定",
+        HWND okButton = CreateWindowW(L"BUTTON", strings.aboutOk,
                                       WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON,
                                       (width - 88) / 2, height - padding - 30,
                                       88, 30, hwnd, reinterpret_cast<HMENU>(IDOK), nullptr, nullptr);
@@ -2070,7 +2437,7 @@ int APIENTRY wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int nCmdShow) {
     wc.lpszClassName = kClassName;
     RegisterClassW(&wc);
 
-    HWND hwnd = CreateWindowExW(0, kClassName, L"系统录音工具",
+    HWND hwnd = CreateWindowExW(0, kClassName, GetUiStrings(UiLanguage::English).appTitle,
                                 WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
                                 CW_USEDEFAULT, CW_USEDEFAULT, 860, 540,
                                 nullptr, nullptr, hInstance, nullptr);
